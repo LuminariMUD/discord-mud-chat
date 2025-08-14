@@ -63,8 +63,9 @@ pm2 start ecosystem.config.js --env development  # Start in development mode
 - **eslint**: Code quality linting (dev dependency)
 
 ## Important Configuration Options
-- `mud_retry_count`: Number of reconnection attempts (default: 5)
+- `mud_retry_count`: Number of reconnection attempts (default: 50)
 - `mud_retry_delay`: Delay between reconnection attempts in ms (default: 30000)
+- `mud_infinite_retries`: Enable infinite reconnection attempts (default: true)
 - `strip_emoji`: Remove emojis from messages (default: true)
 - `enable_bitly`: Reserved for future use (default: false)
 - `largest_printable_string`: Maximum message length (default: 65535)

@@ -3,8 +3,9 @@
     "mud_ip" : "127.0.0.1",
     "mud_port": 8181,
     "mud_auth_token": "",
-    "mud_retry_count": 5,
+    "mud_retry_count": 50,
     "mud_retry_delay": 30000,
+    "mud_infinite_retries": true,
     "rate_limit_per_channel": 10,
     "channels" : [
         { "discord" : "432623057706811394", "mud" : "gossip" },

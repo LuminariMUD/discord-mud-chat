@@ -85,7 +85,10 @@ mudClient.on("data", data => {
 mudClient.on("error", e => {
     console.error("Error received from mud", e);
 
-    if (++retries >= config.mud_retry_count) {
+    if (config.mud_infinite_retries) {
+        console.log(`Retry number ${++retries}...`);
+        setTimeout(connectToMud, config.mud_retry_delay);
+    } else if (++retries >= config.mud_retry_count) {
         console.error(`Max retries (${config.mud_retry_count}) reached. Stopping reconnection attempts.`);
         retries = 0;
     } else {
