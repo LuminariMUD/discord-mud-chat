@@ -30,6 +30,7 @@ const discordClient = new Client({
 // Mudclient stuff
 const net = require("net");
 const mudClient = new net.Socket();
+let heartbeatInterval;
 
 // Miscellaneous stuff
 const emojiRegexText = require("emoji-regex");
@@ -50,12 +51,27 @@ function connectToMud() {
             mudClient.write(JSON.stringify(authMessage) + "\n");
             console.log("Authentication token sent to MUD");
         }
+        
+        // Set up heartbeat to prevent timeout (every 4 minutes)
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(() => {
+            const heartbeat = {
+                channel: "heartbeat",
+                name: "bot",
+                message: "ping"
+            };
+            mudClient.write(JSON.stringify(heartbeat) + "\n");
+            console.log("Heartbeat sent to MUD");
+        }, 240000); // 4 minutes
     });
 }
 
 mudClient.on("close", hadError => {
     console.log(`Disconnected from ${config.mud_name} ${config.mud_ip}:${config.mud_port}`);
     healthServer.setMudConnected(false);
+    
+    // Clear heartbeat interval
+    clearInterval(heartbeatInterval);
 
     if(hadError === false) {
         console.log("Reconnecting...");
@@ -205,6 +221,7 @@ function stripEmoji(str) {
 // Graceful shutdown handlers
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, closing connections...');
+    clearInterval(heartbeatInterval);
     discordClient.destroy();
     mudClient.destroy();
     process.exit(0);
@@ -212,6 +229,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
     console.log('SIGINT received, closing connections...');
+    clearInterval(heartbeatInterval);
     discordClient.destroy();
     mudClient.destroy();
     process.exit(0);
