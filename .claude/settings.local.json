@@ -14,7 +14,9 @@
       "Bash(node:*)",
       "Bash(git commit:*)",
       "Bash(git config:*)",
-      "Bash(git remote remove:*)"
+      "Bash(git remote remove:*)",
+      "Bash(git remote add origin https://github.com/LuminariMUD/discord-mud-chat.git)",
+      "Bash(git push:*)"
     ],
     "defaultMode": "acceptEdits"
   }
