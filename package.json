@@ -12,15 +12,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gesslar/mud-discord-chat.git"
+    "url": "git+https://github.com/LuminariMUD/discord-mud-chat.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["mud", "discord", "bot", "bridge", "chat", "luminarimud"],
+  "author": "LuminariMUD",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/gesslar/mud-discord-chat/issues"
+    "url": "https://github.com/LuminariMUD/discord-mud-chat/issues"
   },
-  "homepage": "https://github.com/gesslar/mud-discord-chat#readme",
+  "homepage": "https://github.com/LuminariMUD/discord-mud-chat#readme",
   "dependencies": {
     "discord.js": "^14.13.0",
     "dotenv": "^17.2.1",

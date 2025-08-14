@@ -11,7 +11,10 @@
       "Bash(npm install:*)",
       "Bash(npm ls:*)",
       "Bash(git add:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git remote remove:*)"
     ],
     "defaultMode": "acceptEdits"
   }

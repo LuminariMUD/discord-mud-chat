@@ -49,8 +49,8 @@ This guide provides comprehensive instructions for deploying the MUD-Discord Cha
 
 1. **Clone and Install**
    ```bash
-   git clone https://github.com/gesslar/mud-discord-chat.git
-   cd mud-discord-chat
+   git clone https://github.com/LuminariMUD/discord-mud-chat.git
+   cd discord-mud-chat
    npm install
    ```
 
@@ -516,7 +516,7 @@ npm audit fix        # Fix vulnerabilities
 
 For additional help:
 
-1. Check [GitHub Issues](https://github.com/gesslar/mud-discord-chat/issues)
+1. Check [GitHub Issues](https://github.com/LuminariMUD/discord-mud-chat/issues)
 2. Review logs in `./logs` directory
 3. Enable debug logging with `LOG_LEVEL=debug`
 4. Create issue with:
@@ -530,5 +530,5 @@ For additional help:
 - [Docker Documentation](https://docs.docker.com/)
 - [PM2 Documentation](https://pm2.keymetrics.io/)
 - [Discord.js Guide](https://discordjs.guide/)
-- [Project Repository](https://github.com/gesslar/mud-discord-chat)
+- [Project Repository](https://github.com/LuminariMUD/discord-mud-chat)
 - [Technical Requirements](bridge_requires.md)

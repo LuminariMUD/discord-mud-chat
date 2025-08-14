@@ -21,8 +21,8 @@ A Node.js application that bridges communication between a MUD (Multi-User Dunge
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/gesslar/mud-discord-chat.git
-cd mud-discord-chat
+git clone https://github.com/LuminariMUD/discord-mud-chat.git
+cd discord-mud-chat
 ```
 
 2. Install dependencies:
@@ -267,7 +267,7 @@ Monitor application health at `http://localhost:3000/health`:
 
 ## Contributing
 
-Issues and pull requests are welcome at https://github.com/gesslar/mud-discord-chat
+Issues and pull requests are welcome at https://github.com/LuminariMUD/discord-mud-chat
 
 ## License
 
