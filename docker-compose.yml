@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  mud-discord-chat:
+    build: .
+    container_name: mud-discord-chat
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config/config.json:/app/config/config.json:ro
+      - ./logs:/app/logs
+    environment:
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"  # Health check endpoint
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

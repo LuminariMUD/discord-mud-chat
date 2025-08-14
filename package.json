@@ -1,9 +1,13 @@
 {
   "name": "mud-discord-chat",
   "version": "1.0.0",
-  "description": "",
-  "main": "chat.js",
+  "description": "Bridge between MUD and Discord for bidirectional chat relay",
+  "main": "src/index.js",
   "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,11 +22,14 @@
   },
   "homepage": "https://github.com/gesslar/mud-discord-chat#readme",
   "dependencies": {
-    "bitly": "^7.1.2",
     "discord.js": "^14.13.0",
-    "dotenv": "^16.3.1",
+    "dotenv": "^17.2.1",
     "emoji-regex": "^10.2.1",
-    "re2": "^1.20.1",
-    "url-regex-safe": "^4.0.0"
+    "url-regex-safe": "^4.0.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "nodemon": "^3.0.0"
   }
 }

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm audit:*)",
+      "Bash(npm outdated)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(npm install)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(git add:*)",
+      "Bash(node:*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

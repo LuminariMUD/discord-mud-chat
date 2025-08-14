@@ -1,0 +1,17 @@
+{
+    "mud_name" : "ThresholdRPG",
+    "mud_ip" : "127.0.0.1",
+    "mud_port": 8181,
+    "mud_auth_token": "",
+    "mud_retry_count": 5,
+    "mud_retry_delay": 30000,
+    "rate_limit_per_channel": 10,
+    "channels" : [
+        { "discord" : "432623057706811394", "mud" : "gossip" },
+        { "discord" : "819275737328386118", "mud" : "auction" },
+        { "discord" : "716021506605318195", "mud" : "gratz" }
+    ],
+    "strip_emoji" : true,
+    "enable_bitly" : false,
+    "largest_printable_string" : 65535
+}
