@@ -26,61 +26,73 @@ This guide provides comprehensive instructions for deploying the MUD-Discord Cha
 
 ### Discord Bot Setup
 
-1. **Create Discord Application**
-   - Visit [Discord Developer Portal](https://discord.com/developers/applications/)
-   - Create a new application and navigate to the Bot section
-   - Reset Token and save it for later use
-   - Enable these Privileged Gateway Intents:
-     - Server Members Intent
-     - Message Content Intent
+See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-step instructions.
 
-2. **Invite Bot to Server**
-   ```
-   https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot&permissions=3072
-   ```
-
-3. **Get Channel IDs**
-   - Enable Developer Mode in Discord (Settings → Advanced)
-   - Right-click channels and select "Copy ID"
+**Quick Reference:**
+1. Create application at [Discord Developer Portal](https://discord.com/developers/applications/)
+2. Create bot and copy token
+3. Enable required intents: Message Content, Server Members, Presence
+4. Generate invite URL with bot scope and permissions
+5. Add bot to your server
 
 ## Local Installation
 
 ### Quick Start
 
-1. **Clone and Install**
+1. **Verify Node.js Installation**
+   ```bash
+   node --version  # Should be v18 or higher
+   npm --version
+   ```
+   
+   If not installed on Ubuntu:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   sudo apt-get install -y nodejs
+   ```
+
+2. **Clone and Install**
    ```bash
    git clone https://github.com/LuminariMUD/discord-mud-chat.git
    cd discord-mud-chat
    npm install
    ```
 
-2. **Configure Environment**
+3. **Configure Environment**
    ```bash
-   # Copy and edit environment file
-   cp .env.example .env
-   nano .env  # Add your DISCORD_TOKEN
-   
-   # Copy and edit configuration
+   # Copy configuration files
    cp config/config.example.json config/config.json
-   nano config/config.json  # Configure MUD settings and channel mappings
+   cp .env.example .env
+   
+   # Add your Discord bot token
+   nano .env  # Add: DISCORD_TOKEN=your_bot_token_here
+   
+   # Configure MUD connection
+   nano config/config.json
+   # Set mud_host to "127.0.0.1" or "localhost"
+   # Set mud_port to your MUD's listener port
+   # Configure channel mappings
    ```
 
-3. **Run the Application**
+4. **Run the Application**
    ```bash
-   # Production mode
+   # Test connection
    npm start
    
-   # Development mode (with auto-restart)
-   npm run dev
+   # You should see:
+   # - Connected to [MUD_NAME] at [host]:[port]
+   # - Logged into Discord as [bot_name]
+   # - List of monitored channels
    
-   # Run linter
-   npm run lint
+   # For development with auto-restart
+   npm run dev
    ```
 
-4. **Verify Operation**
-   - Check console output for successful connections
+5. **Verify Operation**
+   - Send a test message in a configured Discord channel
+   - Check if message appears in MUD
+   - Send message from MUD to verify it appears in Discord
    - Visit health endpoint: `http://localhost:3000/health`
-   - Test message relay between Discord and MUD
 
 ### Configuration Details
 
@@ -204,24 +216,35 @@ services:
 
 1. **Install PM2 Globally**
    ```bash
-   npm install -g pm2
+   sudo npm install -g pm2
    ```
 
 2. **Start Application**
    ```bash
-   # Production mode
+   # From the discord-mud-chat directory
    pm2 start ecosystem.config.js
-   
-   # Development mode with file watching
-   pm2 start ecosystem.config.js --env development
    ```
 
-3. **Configure Startup**
+3. **Verify Application Status**
    ```bash
-   pm2 save                    # Save current process list
-   pm2 startup                 # Generate startup script
-   # Follow the instructions provided by pm2 startup
+   pm2 status
+   # Should show mud-discord-chat as "online"
    ```
+
+4. **Configure Auto-Start on Server Reboot**
+   ```bash
+   # Generate startup script
+   pm2 startup
+   # Copy and run the command it outputs (may require sudo)
+   
+   # Save current process list
+   pm2 save
+   ```
+
+**Note:** The startup command will look something like:
+```bash
+sudo env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u YOUR_USER --hp /home/YOUR_USER
+```
 
 ### PM2 Commands
 
@@ -400,12 +423,25 @@ chmod 755 logs/
 ### Common Issues
 
 #### Bot Not Connecting to Discord
-```bash
-# Check token
-echo $DISCORD_TOKEN
 
-# Verify bot permissions in Discord Developer Portal
-# Ensure Message Content Intent is enabled
+**"Used disallowed intents" Error:**
+- Go to Discord Developer Portal → Bot section
+- Enable ALL required intents:
+  - Message Content Intent
+  - Server Members Intent
+  - Presence Intent
+- Save changes and restart bot
+
+**"Private application cannot have a default authorization link":**
+- This warning is normal when making bot private
+- You can leave bot as public if needed
+- Bot will still only join servers you explicitly add it to
+
+**Token Issues:**
+```bash
+# Verify token is set
+cat .env | grep DISCORD_TOKEN
+# Should show: DISCORD_TOKEN=your_token_here
 ```
 
 #### MUD Connection Failed
