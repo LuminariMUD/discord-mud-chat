@@ -1,6 +1,6 @@
 {
   "name": "mud-discord-chat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Bridge between MUD and Discord for bidirectional chat relay",
   "main": "src/index.js",
   "scripts": {
