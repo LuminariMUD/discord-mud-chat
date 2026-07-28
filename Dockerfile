@@ -1,5 +1,5 @@
 # Use the latest Node.js LTS release on Alpine Linux
-FROM node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
+FROM node:26.5.0-alpine3.24@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66
 
 # Set working directory
 WORKDIR /app
