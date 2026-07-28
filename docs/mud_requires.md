@@ -322,7 +322,7 @@ function onMUDChannelMessage(channel, player, message) {
 The Discord bridge now supports multiple deployment methods:
 1. **Standard Node.js**: `npm start` or `node src/index.js`
 2. **PM2 Process Manager**: `pm2 start ecosystem.config.js`
-3. **Docker Container**: `docker-compose up -d`
+3. **Docker Container**: `docker compose up -d`
 
 ### Future Enhancements
 1. **Bidirectional authentication**

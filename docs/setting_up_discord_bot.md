@@ -3,7 +3,7 @@
 This guide walks through setting up a Discord bot for the mud-discord-chat application on Ubuntu.
 
 ## Prerequisites
-- Ubuntu server with Node.js v18+ installed
+- Ubuntu server with Node.js 24.18.0+ and npm 12.0.1+ installed
 - Discord account
 - Discord server where you have admin permissions
 
@@ -52,7 +52,8 @@ This guide walks through setting up a Discord bot for the mud-discord-chat appli
 
 1. Check Node.js is installed:
    ```bash
-   node --version  # Should be v18 or higher
+   node --version  # Should be v24.18.0 or higher
+   npm --version   # Should be v12.0.1 or higher
    ```
 
 2. Clone the repository:
@@ -64,7 +65,7 @@ This guide walks through setting up a Discord bot for the mud-discord-chat appli
 
 3. Install dependencies:
    ```bash
-   npm install
+   npm ci
    ```
 
 4. Set up configuration files:
@@ -104,7 +105,7 @@ You should see:
 
 ### Install PM2
 ```bash
-sudo npm install -g pm2
+sudo npm install --global pm2@latest
 ```
 
 ### Start the bot with PM2
@@ -154,4 +155,4 @@ Your bot will now:
 - **"Private application cannot have a default authorization link"**: This warning when making the bot private is normal - you can leave it public if needed
 - **Bot not responding**: Check channel mappings in config.json match your Discord channel names
 - **Connection refused**: Verify MUD listener port is correct and accepting connections
-- **PM2 not found**: Make sure to install PM2 globally with `sudo npm install -g pm2`
+- **PM2 not found**: Install the current PM2 release with `sudo npm install --global pm2@latest`

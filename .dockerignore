@@ -6,7 +6,7 @@ logs
 *.log
 .git
 .gitignore
-.eslintrc.json
+eslint.config.js
 .eslintcache
 .pm2
 ecosystem.config.js

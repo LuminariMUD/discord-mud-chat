@@ -150,15 +150,16 @@ The bridge must support configurable channel mappings between Discord channels a
 ```json
 {
   "dependencies": {
-    "discord.js": "^14.x",
-    "dotenv": "^16.x",
-    "winston": "^3.x",        // Logging
-    "node-json-db": "^2.x"    // Optional: persistent storage
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "emoji-regex": "^10.6.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
-    "nodemon": "^3.x",
-    "eslint": "^8.x",
-    "jest": "^29.x"           // Testing
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
+    "nodemon": "^3.1.14"
   }
 }
 ```
@@ -278,7 +279,8 @@ discord-mud-bridge/
 
 ## Compatibility Notes
 
-- **Node.js Version**: 18.x or higher recommended
+- **Node.js Version**: 24.18.0 or higher
+- **npm Version**: 12.0.1 or higher
 - **Discord.js**: Version 14.x for latest features
 - **Operating System**: Linux/macOS/Windows compatible
 - **MUD Protocol**: Compatible with LuminariMUD TCP JSON protocol

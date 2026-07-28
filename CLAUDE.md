@@ -32,12 +32,15 @@ The application exchanges JSON messages with the MUD in this format:
 
 ## Development Commands
 
+Use Node.js 24.18.0 or newer and npm 12.0.1 or newer. The repository's
+`.nvmrc` and `packageManager` fields declare the canonical tool versions.
+
 ### Running the Application
 ```bash
-npm install                # Install dependencies
+npm ci                     # Install locked dependencies
 npm start                  # Start the application
 npm run dev               # Start with nodemon for development
-npm run lint              # Run ESLint on src/
+npm run lint              # Run ESLint on all JavaScript
 npm run lint:fix          # Run ESLint with auto-fix
 ```
 
@@ -58,9 +61,8 @@ pm2 start ecosystem.config.js --env development  # Start in development mode
 - **discord.js v14**: Discord bot framework
 - **dotenv**: Environment variable management
 - **emoji-regex**: Emoji stripping functionality
-- **url-regex-safe**: URL detection
 - **nodemon**: Development auto-restart (dev dependency)
-- **eslint**: Code quality linting (dev dependency)
+- **ESLint 10**: Code quality linting with flat config (dev dependency)
 
 ## Important Configuration Options
 - `mud_retry_count`: Number of reconnection attempts (default: 50)
@@ -91,7 +93,7 @@ mud-discord-chat/
 │   └── mud_example/  # Example MUD integration code
 ├── ecosystem.config.js  # PM2 configuration for production
 ├── .env.example      # Environment variables template
-├── .eslintrc.json    # ESLint configuration
+├── eslint.config.js  # ESLint flat configuration
 ├── Dockerfile        # Docker container configuration
 └── docker-compose.yml  # Docker Compose configuration
 ```

@@ -18,8 +18,9 @@ This guide provides comprehensive instructions for deploying the MUD-Discord Cha
 
 ### System Requirements
 
-- **Node.js**: Version 18.x or higher (for local/PM2 deployment)
-- **Docker**: Version 20.10+ and Docker Compose 2.0+ (for Docker deployment)
+- **Node.js**: Version 24.18.0 or higher (for local/PM2 deployment)
+- **npm**: Version 12.0.1 or higher
+- **Docker**: A supported Docker Engine release with the Docker Compose plugin
 - **Memory**: Minimum 256MB RAM
 - **Disk**: 100MB for application and dependencies
 - **Network**: Outbound HTTPS for Discord API, TCP connection to MUD server
@@ -41,21 +42,22 @@ See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-ste
 
 1. **Verify Node.js Installation**
    ```bash
-   node --version  # Should be v18 or higher
-   npm --version
+   node --version  # Should be v24.18.0 or higher
+   npm --version   # Should be v12.0.1 or higher
    ```
    
    If not installed on Ubuntu:
    ```bash
-   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
    sudo apt-get install -y nodejs
+   sudo npm install --global npm@12.0.1
    ```
 
 2. **Clone and Install**
    ```bash
    git clone https://github.com/LuminariMUD/discord-mud-chat.git
    cd discord-mud-chat
-   npm install
+   npm ci
    ```
 
 3. **Configure Environment**
@@ -148,13 +150,13 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
 
 2. **Start with Docker Compose**
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 3. **Verify Deployment**
    ```bash
-   docker-compose ps                      # Check container status
-   docker-compose logs -f                 # View logs
+   docker compose ps                      # Check container status
+   docker compose logs -f                 # View logs
    curl http://localhost:3000/health      # Check health endpoint
    ```
 
@@ -162,21 +164,21 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
 
 ```bash
 # Container Management
-docker-compose up -d                    # Start in background
-docker-compose down                     # Stop and remove containers
-docker-compose restart                  # Restart containers
-docker-compose ps                       # List containers
-docker-compose logs -f                  # Follow logs
+docker compose up -d                    # Start in background
+docker compose down                     # Stop and remove containers
+docker compose restart                  # Restart containers
+docker compose ps                       # List containers
+docker compose logs -f                  # Follow logs
 
 # Updates
 git pull origin main                    # Pull latest code
-docker-compose down                     # Stop current version
-docker-compose up -d --build           # Rebuild and start
+docker compose down                     # Stop current version
+docker compose up -d --build           # Rebuild and start
 
 # Debugging
-docker-compose exec mud-discord-chat sh    # Enter container shell
+docker compose exec mud-discord-chat sh    # Enter container shell
 docker stats mud-discord-chat              # Monitor resources
-docker-compose logs --tail=100            # View last 100 log lines
+docker compose logs --tail=100            # View last 100 log lines
 ```
 
 ### Custom Docker Configuration
@@ -216,7 +218,7 @@ services:
 
 1. **Install PM2 Globally**
    ```bash
-   sudo npm install -g pm2
+   sudo npm install --global pm2@latest
    ```
 
 2. **Start Application**
@@ -461,7 +463,7 @@ docker stats mud-discord-chat
 pm2 monit
 
 # Restart if needed
-docker-compose restart
+docker compose restart
 pm2 restart mud-discord-chat
 ```
 
@@ -482,9 +484,9 @@ Enable debug logging for troubleshooting:
 LOG_LEVEL=debug npm start
 
 # Docker
-docker-compose down
+docker compose down
 echo "LOG_LEVEL=debug" >> .env
-docker-compose up
+docker compose up
 ```
 
 ### Validation Checklist
@@ -511,14 +513,14 @@ Before reporting issues, verify:
 2. **Pull Latest Changes**
    ```bash
    git pull origin main
-   npm install  # Update dependencies
+   npm ci  # Install the lockfile exactly
    ```
 
 3. **Restart Application**
    ```bash
    # Docker
-   docker-compose down
-   docker-compose up -d --build
+   docker compose down
+   docker compose up -d --build
    
    # PM2
    pm2 restart mud-discord-chat

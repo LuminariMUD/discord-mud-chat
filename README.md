@@ -19,6 +19,10 @@ A Node.js application that bridges communication between a MUD (Multi-User Dunge
 
 ## Quick Start
 
+Requires Node.js 24.18.0 or newer and npm 12.0.1 or newer. If you use
+`nvm`, run `nvm install` from the repository root to select the version
+declared in `.nvmrc`.
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/LuminariMUD/discord-mud-chat.git
@@ -27,7 +31,7 @@ cd discord-mud-chat
 
 2. Install dependencies:
 ```bash
-npm install
+npm ci
 ```
 
 3. Configure the application:
@@ -151,7 +155,7 @@ npm run dev  # Development mode with auto-restart
 
 ### 🐳 Docker (Recommended)
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 📦 PM2 (Process Management)
@@ -221,7 +225,7 @@ mud-discord-chat/
 ├── logs/                 # Log files directory (auto-created)
 ├── .env                  # Environment variables (git ignored)
 ├── .env.example          # Environment template
-├── .eslintrc.json        # ESLint configuration
+├── eslint.config.js      # ESLint flat configuration
 ├── ecosystem.config.js   # PM2 configuration
 ├── Dockerfile            # Docker container definition
 ├── docker-compose.yml    # Docker Compose configuration
