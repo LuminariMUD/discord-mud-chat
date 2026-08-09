@@ -2,6 +2,17 @@
 
 A Node.js application that bridges communication between a MUD (Multi-User Dungeon) and Discord channels, enabling bidirectional chat relay.
 
+## LuminariMUD Eco-System
+
+What we call the "Lumiverse":
+
+- [LuminariMUD game server](https://github.com/LuminariMUD/Luminari-Source)
+- [Sage GraphRAG lore and world building](https://github.com/LuminariMUD/sage)
+- [Luminari web client](https://github.com/LuminariMUD/luminariweb)
+- [InterMUD-3 client](https://github.com/LuminariMUD/Intermud3)
+- [Wilderness editor](https://github.com/LuminariMUD/wildeditor)
+- [Mudlet interface](https://github.com/LuminariMUD/LuminariGUI)
+
 ## Features
 
 - 🔄 Bidirectional message relay between MUD and Discord
