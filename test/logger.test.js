@@ -5,6 +5,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 const Logger = require("../src/logger");
 
+/** Creates mutable no-op console methods for logger interception tests. */
 function createConsoleRef() {
     return {
         log() {},

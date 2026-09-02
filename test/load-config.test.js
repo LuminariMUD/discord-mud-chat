@@ -3,6 +3,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 const { loadConfig } = require("../config/load-config");
 
+/** Creates a minimal file-system double that returns a fixed config payload. */
 function fakeFileSystem(value, assertions = () => {}) {
     return {
         readFileSync(configPath, encoding) {

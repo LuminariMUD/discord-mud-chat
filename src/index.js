@@ -1,9 +1,9 @@
 const path = require("path");
-const net = require("net");
 const { Client, GatewayIntentBits, Events } = require("discord.js");
 const Logger = require("./logger");
 const HealthServer = require("./health");
 const { ChatBridge } = require("./bridge");
+const MudClient = require("./mud-client");
 
 /** Composes the bridge runtime and provides idempotent lifecycle controls. */
 function createApplication(options = {}) {
@@ -15,7 +15,6 @@ function createApplication(options = {}) {
     const DiscordClientClass = options.DiscordClientClass || Client;
     const gatewayIntentBits = options.gatewayIntentBits || GatewayIntentBits;
     const events = options.events || Events;
-    const SocketClass = options.SocketClass || net.Socket;
     const BridgeClass = options.BridgeClass || ChatBridge;
 
     const discordClient = options.discordClient || new DiscordClientClass({
@@ -26,7 +25,15 @@ function createApplication(options = {}) {
             gatewayIntentBits.GuildMembers
         ]
     });
-    const mudClient = options.mudClient || new SocketClass();
+    const MudClientClass = options.MudClientClass || MudClient;
+    const mudClient = options.mudClient || (
+        options.SocketClass
+            ? new options.SocketClass()
+            : new MudClientClass({
+                useTls: config.mud_tls === true,
+                servername: config.mud_tls_servername || undefined
+            })
+    );
     const bridge = options.bridge || new BridgeClass({
         config,
         discordClient,

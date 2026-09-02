@@ -1,4 +1,5 @@
 const emojiRegexText = require("emoji-regex");
+const { StringDecoder } = require("node:string_decoder");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
@@ -41,6 +42,8 @@ class ChatBridge {
         this.reconnectTimeouts = new Set();
         this.eventsBound = false;
         this.stopped = false;
+        this.mudDataBuffer = "";
+        this.mudDecoder = new StringDecoder("utf8");
     }
 
     /** Starts the Discord login, event listeners, and MUD connection. */
@@ -80,7 +83,7 @@ class ChatBridge {
         this.logger.log(`Connected to ${this.config.mud_name} ${this.config.mud_ip}:${this.config.mud_port}`);
         this.healthServer.setMudConnected(true);
 
-        if (this.config.mud_auth_token) {
+        if (this.config.mud_auth_token && this.mudClient.encrypted === true) {
             const authMessage = {
                 channel: "auth",
                 name: "bot",
@@ -88,6 +91,8 @@ class ChatBridge {
             };
             this.writeToMud(authMessage);
             this.logger.log("Authentication token sent to MUD");
+        } else if (this.config.mud_auth_token) {
+            this.logger.error("MUD authentication token was not sent because the connection is not using TLS");
         }
 
         if (this.heartbeatInterval !== undefined) {
@@ -110,6 +115,7 @@ class ChatBridge {
         this.logger.log(`Disconnected from ${this.config.mud_name} ${this.config.mud_ip}:${this.config.mud_port}`);
         this.healthServer.setMudConnected(false);
         this.clearHeartbeat();
+        this.clearMudDataBuffer();
 
         if (!this.stopped && hadError === false) {
             this.logger.log("Reconnecting...");
@@ -117,12 +123,29 @@ class ChatBridge {
         }
     }
 
-    /** Parses and relays one MUD payload to its mapped Discord channel. */
+    /** Buffers TCP chunks and relays every complete newline-delimited MUD record. */
     handleMudData(data) {
+        this.mudDataBuffer += Buffer.isBuffer(data)
+            ? this.mudDecoder.write(data)
+            : data.toString();
+        const records = this.mudDataBuffer.split("\n");
+        this.mudDataBuffer = records.pop();
+        let relayed = false;
+
+        for (const record of records) {
+            if (record.trim().length === 0) continue;
+            if (this.relayMudRecord(record)) relayed = true;
+        }
+
+        return relayed;
+    }
+
+    /** Parses and relays one complete MUD record to mapped Discord channels. */
+    relayMudRecord(record) {
         let messageData;
 
         try {
-            messageData = JSON.parse(data.toString());
+            messageData = JSON.parse(record);
         } catch (error) {
             this.logger.error("Failed to parse message from MUD:", error);
             return false;
@@ -138,7 +161,10 @@ class ChatBridge {
             const message = messageData.emoted === 1
                 ? `${messageData.message}`
                 : `${messageData.name}: ${messageData.message}`;
-            discordChannel.send(message)
+            discordChannel.send({
+                content: message,
+                allowedMentions: { parse: [] }
+            })
                 .then(() => this.healthServer.incrementMudToDiscord())
                 .catch(error => {
                     this.logger.error(`Failed to send message to Discord channel ${channel.discord}:`, error);
@@ -147,6 +173,12 @@ class ChatBridge {
         }
 
         return relayed;
+    }
+
+    /** Clears buffered MUD input so records never span separate connections. */
+    clearMudDataBuffer() {
+        this.mudDataBuffer = "";
+        this.mudDecoder = new StringDecoder("utf8");
     }
 
     /** Applies the configured retry policy after a MUD socket error. */
@@ -269,6 +301,7 @@ class ChatBridge {
     stop() {
         this.stopped = true;
         this.clearHeartbeat();
+        this.clearMudDataBuffer();
 
         for (const timeout of this.reconnectTimeouts) {
             this.timers.clearTimeout(timeout);

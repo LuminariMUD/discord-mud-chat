@@ -14,6 +14,7 @@ class FakeMudClient extends EventEmitter {
         this.connectCalls = [];
         this.writes = [];
         this.destroyed = false;
+        this.encrypted = true;
     }
 
     connect(port, host, callback) {
@@ -97,6 +98,7 @@ class FakeHealthServer {
     }
 }
 
+/** Creates deterministic timer fakes for bridge lifecycle tests. */
 function createFakeTimers() {
     const intervals = [];
     const timeouts = [];
@@ -127,6 +129,7 @@ function createFakeTimers() {
     };
 }
 
+/** Creates a ChatBridge test harness with injectable configuration overrides. */
 function createHarness(overrides = {}) {
     const config = {
         mud_name: "TestMUD",
@@ -147,6 +150,9 @@ function createHarness(overrides = {}) {
         ...overrides.config
     };
     const mudClient = new FakeMudClient();
+    if (overrides.mudEncrypted !== undefined) {
+        mudClient.encrypted = overrides.mudEncrypted;
+    }
     const discordClient = new FakeDiscordClient();
     const healthServer = new FakeHealthServer();
     const timers = createFakeTimers();
@@ -185,6 +191,7 @@ function createHarness(overrides = {}) {
     };
 }
 
+/** Creates a representative Discord message with optional field overrides. */
 function createDiscordMessage(overrides = {}) {
     return {
         content: "Hello from Discord",
@@ -205,8 +212,14 @@ function createDiscordMessage(overrides = {}) {
     };
 }
 
+/** Parses all newline-delimited writes captured by the fake MUD client. */
 function parsedWrites(mudClient) {
     return mudClient.writes.map(value => JSON.parse(value));
+}
+
+/** Encodes one MUD record using the bridge's newline-delimited protocol. */
+function mudRecord(value) {
+    return Buffer.from(`${JSON.stringify(value)}\n`);
 }
 
 test("stripEmoji removes custom Discord and Unicode emoji", () => {
@@ -264,26 +277,48 @@ test("a MUD connection skips authentication when no token is configured", () => 
     assert.deepEqual(mudClient.writes, []);
 });
 
+test("a MUD authentication token is never sent over plaintext", () => {
+    const { bridge, errors, mudClient } = createHarness({ mudEncrypted: false });
+
+    bridge.start();
+    mudClient.completeConnection();
+
+    assert.deepEqual(mudClient.writes, []);
+    assert.ok(errors.some(args => String(args[0]).includes("not using TLS")));
+});
+
 test("MUD messages relay to mapped Discord channels with emote formatting", async () => {
     const { bridge, discordClient, healthServer } = createHarness();
     discordClient.addChannel("discord-1");
 
-    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+    assert.equal(bridge.handleMudData(mudRecord({
         channel: "gossip",
         name: "Ayla",
         message: "Hello",
         emoted: 0
-    }))), true);
-    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+    })), true);
+    assert.equal(bridge.handleMudData(mudRecord({
         channel: "gossip",
         name: "Ayla",
         message: "waves",
         emoted: 1
-    }))), true);
+    })), true);
 
     assert.deepEqual(discordClient.sentMessages, [
-        { id: "discord-1", message: "Ayla: Hello" },
-        { id: "discord-1", message: "waves" }
+        {
+            id: "discord-1",
+            message: {
+                content: "Ayla: Hello",
+                allowedMentions: { parse: [] }
+            }
+        },
+        {
+            id: "discord-1",
+            message: {
+                content: "waves",
+                allowedMentions: { parse: [] }
+            }
+        }
     ]);
     await Promise.resolve();
     assert.equal(healthServer.mudToDiscord, 2);
@@ -300,11 +335,11 @@ test("Discord login and channel delivery failures are logged", async () => {
     });
 
     bridge.start();
-    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+    assert.equal(bridge.handleMudData(mudRecord({
         channel: "gossip",
         name: "Ayla",
         message: "Hello"
-    }))), true);
+    })), true);
     await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(healthServer.mudToDiscord, 0);
@@ -312,20 +347,50 @@ test("Discord login and channel delivery failures are logged", async () => {
     assert.ok(errors.some(args => String(args[0]).includes("discord-1")));
 });
 
+test("split and coalesced MUD records are relayed without corrupting Unicode", async () => {
+    const { bridge, discordClient, healthServer } = createHarness();
+    discordClient.addChannel("discord-1");
+    const firstRecord = mudRecord({
+        channel: "gossip",
+        name: "Ayla",
+        message: "Hello 🔥"
+    });
+    const emojiOffset = firstRecord.indexOf(Buffer.from("🔥"));
+    const secondRecord = mudRecord({
+        channel: "gossip",
+        name: "Borin",
+        message: "Second"
+    });
+
+    assert.equal(bridge.handleMudData(firstRecord.subarray(0, emojiOffset + 1)), false);
+    assert.equal(bridge.handleMudData(Buffer.concat([
+        firstRecord.subarray(emojiOffset + 1),
+        secondRecord
+    ])), true);
+    await Promise.resolve();
+
+    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
+        "Ayla: Hello 🔥",
+        "Borin: Second"
+    ]);
+    assert.equal(healthServer.mudToDiscord, 2);
+    assert.equal(bridge.mudDataBuffer, "");
+});
+
 test("invalid, unmapped, and unavailable MUD messages are ignored", () => {
     const { bridge, discordClient, errors, healthServer } = createHarness();
 
-    assert.equal(bridge.handleMudData(Buffer.from("not json")), false);
-    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+    assert.equal(bridge.handleMudData(Buffer.from("not json\n")), false);
+    assert.equal(bridge.handleMudData(mudRecord({
         channel: "unknown",
         name: "Ayla",
         message: "Hello"
-    }))), false);
-    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+    })), false);
+    assert.equal(bridge.handleMudData(mudRecord({
         channel: "gossip",
         name: "Ayla",
         message: "Hello"
-    }))), false);
+    })), false);
 
     assert.equal(errors.length, 1);
     assert.deepEqual(discordClient.sentMessages, []);

@@ -117,7 +117,9 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
     "mud_name": "YourMUD",
     "mud_ip": "127.0.0.1",
     "mud_port": 8181,
-    "mud_auth_token": "",                  // Optional authentication
+    "mud_tls": false,
+    "mud_tls_servername": "",
+    "mud_auth_token": "",                  // Optional; sent only over TLS
     "mud_retry_count": 5,
     "mud_retry_delay": 30000,
     "rate_limit_per_channel": 10,          // Messages per second
@@ -386,13 +388,20 @@ Configure log level via `LOG_LEVEL` environment variable:
 1. **MUD Authentication**
    ```json
    {
+     "mud_tls": true,
+     "mud_tls_servername": "mud.example.com",
      "mud_auth_token": "your-secret-token"
    }
    ```
-   The token is sent on connection:
+   Connect to a TLS-capable listener or TLS-terminating proxy whose certificate
+   is trusted by the host. For a private CA, set `NODE_EXTRA_CA_CERTS` before
+   starting Node.js. `mud_tls_servername` is useful when `mud_ip` is an IP
+   address but the certificate identifies a hostname. The token is sent only
+   after certificate-validated TLS connects:
    ```json
    {"channel": "auth", "name": "bot", "message": "your-secret-token"}
    ```
+   If TLS is disabled, the bridge logs an error and does not transmit the token.
 
 2. **Discord Security**
    - Bot token stored in environment variable

@@ -127,6 +127,22 @@ test("createApplication accepts prebuilt dependencies", async () => {
     ]);
 });
 
+test("createApplication configures the default MUD transport for TLS", () => {
+    const application = createApplication({
+        config: {
+            mud_tls: true,
+            mud_tls_servername: "mud.example.com"
+        },
+        logger: {},
+        healthServer: {},
+        discordClient: {},
+        bridge: {}
+    });
+
+    assert.equal(application.mudClient.useTls, true);
+    assert.equal(application.mudClient.servername, "mud.example.com");
+});
+
 test("createApplication waits for shutdown and coalesces concurrent stops", async () => {
     const calls = [];
     let finishHealthStop;

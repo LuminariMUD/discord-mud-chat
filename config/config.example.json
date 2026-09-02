@@ -2,6 +2,8 @@
     "mud_name" : "ThresholdRPG",
     "mud_ip" : "127.0.0.1",
     "mud_port": 8181,
+    "mud_tls": false,
+    "mud_tls_servername": "",
     "mud_auth_token": "",
     "mud_retry_count": 50,
     "mud_retry_delay": 30000,

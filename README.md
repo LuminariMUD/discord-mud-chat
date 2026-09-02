@@ -20,7 +20,7 @@ What we call the "Lumiverse":
 - 🔌 Automatic reconnection with configurable retry logic
 - 🚫 Security features (@everyone/@here mention stripping)
 - ⚡ Rate limiting to prevent spam
-- 🔐 Optional MUD authentication support
+- 🔐 Optional MUD authentication over certificate-validated TLS
 - 😊 Emoji stripping for MUD compatibility
 - 📝 Winston logging with rotation and multiple outputs
 - 🏥 Health check endpoint for monitoring
@@ -112,6 +112,8 @@ Copy `config/config.example.json` to `config/config.json` and customize:
   "mud_name": "LuminariMUD",
   "mud_ip": "127.0.0.1",
   "mud_port": 8181,
+  "mud_tls": false,
+  "mud_tls_servername": "",
   "mud_auth_token": "",
   "mud_retry_count": 5,
   "mud_retry_delay": 30000,
@@ -134,7 +136,9 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `mud_name` | Display name for your MUD | Required |
 | `mud_ip` | MUD server IP address | Required |
 | `mud_port` | MUD server port | Required |
-| `mud_auth_token` | Optional authentication token for MUD | "" |
+| `mud_tls` | Connect to the MUD through certificate-validated TLS | false |
+| `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
+| `mud_auth_token` | Optional MUD token; sent only over TLS | "" |
 | `mud_retry_count` | Number of reconnection attempts | 5 |
 | `mud_retry_delay` | Delay between reconnection attempts (ms) | 30000 |
 | `rate_limit_per_channel` | Messages per second per channel | 10 |
@@ -142,6 +146,12 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `enable_bitly` | Reserved for future use | false |
 | `largest_printable_string` | Maximum message length | 65535 |
 | `channels` | Array of channel mappings | Required |
+
+When `mud_auth_token` is configured, set `mud_tls` to `true` and connect to a
+TLS-capable MUD listener or TLS-terminating proxy. Publicly trusted certificates
+use the system trust store; private certificate authorities can be supplied to
+Node.js with `NODE_EXTRA_CA_CERTS`. The token is deliberately not sent over a
+plaintext TCP connection.
 
 ## Message Format
 
