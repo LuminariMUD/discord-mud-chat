@@ -12,7 +12,7 @@ This document outlines the comprehensive technical requirements for MUD-side imp
 - **Connection Type**: Persistent TCP connection
 - **Role**: MUD acts as TCP server, Discord bridge acts as TCP client
 - **Port**: Configurable (example: 8181)
-- **IP Binding**: Should bind to appropriate interface (127.0.0.1 for local, or external IP for remote connections)
+- **IP Binding**: Bind plaintext listeners to `127.0.0.1`; remote access requires a certificate-validating TLS listener or a TLS terminator that forwards only over loopback
 
 ### Connection Management
 The MUD server must handle:
@@ -59,9 +59,14 @@ All communication uses JSON-encoded messages sent over the TCP socket.
 2. **Build JSON message** with required fields
 3. **Include player name** from the MUD character/account
 4. **Send as raw JSON string** over the TCP socket
-5. **Include newline delimiter** after each JSON message (recommended)
+5. **Include a newline delimiter** after every JSON message (required; TCP chunks are not message boundaries)
 
 ### Data Validation
+
+Both peers must enforce `mud_max_record_bytes` (default 1,048,576 bytes) on the
+UTF-8 bytes in each newline-delimited record. Discard an oversized complete
+record, or discard an oversized incomplete record through its next newline,
+then continue processing later records without closing the connection.
 
 #### Incoming Messages (from Discord)
 - **Maximum message length**: 65,535 characters (configurable)
@@ -98,17 +103,43 @@ MUD Channel     | Status  | Description
 #### 1. TCP Socket Server
 ```pseudocode
 function startDiscordBridge() {
+    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
     server = createTCPServer(port: 8181)
     
     server.onConnection = function(socket) {
         log("Discord bridge connected from " + socket.address)
-        
+        buffer = ""
+        discardingOversizedRecord = false
+
         socket.onData = function(data) {
-            try {
-                message = parseJSON(data)
-                routeMessageToMUD(message)
-            } catch (error) {
-                log("Invalid JSON received: " + error)
+            decodedData = decodeUTF8Incrementally(data)
+            if (discardingOversizedRecord) {
+                if (decodedData does not contain "\n") return
+                decodedData = contentAfterFirstNewline(decodedData)
+                discardingOversizedRecord = false
+            }
+
+            buffer += decodedData
+            while (buffer contains "\n") {
+                record, buffer = splitAtFirstNewline(buffer)
+                if (record is blank) continue
+                if (utf8ByteLength(record) > maxRecordBytes) {
+                    log("Oversized JSON record discarded")
+                    continue
+                }
+
+                try {
+                    message = parseJSON(record)
+                    routeMessageToMUD(message)
+                } catch (error) {
+                    log("Invalid JSON received: " + error)
+                }
+            }
+
+            if (utf8ByteLength(buffer) > maxRecordBytes) {
+                log("Oversized incomplete JSON record discarded")
+                buffer = ""
+                discardingOversizedRecord = true
             }
         }
         
@@ -151,7 +182,14 @@ function onMUDChannelMessage(channel, player, message) {
         "emoted": isEmote(message) ? 1 : 0
     }
     
-    sendToDiscordBridge(JSON.stringify(discordMessage))
+    record = JSON.stringify(discordMessage)
+    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
+    if (utf8ByteLength(record) > maxRecordBytes) {
+        log("Oversized Discord bridge record dropped")
+        return
+    }
+
+    sendToDiscordBridge(record + "\n")
 }
 ```
 
@@ -164,7 +202,9 @@ function onMUDChannelMessage(channel, player, message) {
 
 #### 2. Connection Authentication
 - Optional authentication token/password
-- Send upon connection establishment
+- Require certificate-validated TLS whenever authentication is enabled
+- Send only after the TLS connection is established
+- Do not send MUD-to-Discord records until required client authentication succeeds
 - Reject unauthorized connections
 
 #### 3. Rate Limiting
@@ -182,7 +222,7 @@ function onMUDChannelMessage(channel, player, message) {
 ### Network Security
 1. **Firewall rules**: Only allow connections from authorized Discord bridge IPs
 2. **Connection limits**: Limit to one active Discord bridge connection
-3. **TLS/SSL**: Consider implementing TLS for encrypted communication (optional)
+3. **TLS/SSL**: Provide TLS when the Discord bridge uses a hostname or connects from a remote host; plaintext transport is accepted only over literal loopback IPs
 
 ### Content Security
 1. **Input validation**: Validate all incoming JSON fields
@@ -325,8 +365,8 @@ The Discord bridge now supports multiple deployment methods:
 3. **Docker Container**: `docker compose up -d`
 
 ### Future Enhancements
-1. **Bidirectional authentication**
-2. **Message encryption (TLS)**
+1. **Mutual TLS authentication**
+2. **Certificate rotation automation**
 3. **Compression for high-volume channels**
 4. **Rich message support** (attachments, reactions)
 5. **Command bridge** for MUD commands via Discord
@@ -339,10 +379,12 @@ The Discord bridge now supports multiple deployment methods:
 import socket
 import json
 import threading
+import codecs
 
 class DiscordBridge:
-    def __init__(self, port=8181):
+    def __init__(self, port=8181, max_record_bytes=1024 * 1024):
         self.port = port
+        self.max_record_bytes = max_record_bytes
         self.socket = None
         self.client = None
         
@@ -360,17 +402,34 @@ class DiscordBridge:
     
     def handle_client(self):
         buffer = ""
+        decoder = codecs.getincrementaldecoder('utf-8')()
+        discarding_oversized_record = False
         while True:
             try:
-                data = self.client.recv(4096).decode('utf-8')
+                data = self.client.recv(4096)
                 if not data:
                     break
-                    
-                buffer += data
+
+                decoded_data = decoder.decode(data)
+                if discarding_oversized_record:
+                    if '\n' not in decoded_data:
+                        continue
+                    _, decoded_data = decoded_data.split('\n', 1)
+                    discarding_oversized_record = False
+
+                buffer += decoded_data
                 while '\n' in buffer:
                     line, buffer = buffer.split('\n', 1)
+                    if len(line.encode('utf-8')) > self.max_record_bytes:
+                        print("Oversized Discord bridge record dropped")
+                        continue
                     self.process_message(line)
-                    
+
+                if len(buffer.encode('utf-8')) > self.max_record_bytes:
+                    print("Oversized incomplete Discord bridge record dropped")
+                    buffer = ""
+                    discarding_oversized_record = True
+
             except Exception as e:
                 print(f"Error handling client: {e}")
                 break
@@ -401,8 +460,13 @@ class DiscordBridge:
             'emoted': emoted
         })
         
+        encoded_record = (data + '\n').encode('utf-8')
+        if len(encoded_record) - 1 > self.max_record_bytes:
+            print("Oversized Discord bridge record dropped")
+            return
+
         try:
-            self.client.send((data + '\n').encode('utf-8'))
+            self.client.sendall(encoded_record)
         except Exception as e:
             print(f"Error sending to Discord: {e}")
     

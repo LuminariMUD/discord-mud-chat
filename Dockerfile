@@ -29,8 +29,5 @@ RUN chown -R nodejs:nodejs /app
 # Switch to non-root user
 USER nodejs
 
-# Expose port for health checks
-EXPOSE 3000
-
 # Start the application
 CMD ["node", "src/index.js"]

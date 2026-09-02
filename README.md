@@ -20,7 +20,7 @@ What we call the "Lumiverse":
 - 🔌 Automatic reconnection with configurable retry logic
 - 🚫 Security features (@everyone/@here mention stripping)
 - ⚡ Rate limiting to prevent spam
-- 🔐 Optional MUD authentication support
+- 🔐 Certificate-validated TLS for remote MUD connections and authentication
 - 😊 Emoji stripping for MUD compatibility
 - 📝 Winston logging with rotation and multiple outputs
 - 🏥 Health check endpoint for monitoring
@@ -112,7 +112,9 @@ Copy `config/config.example.json` to `config/config.json` and customize:
   "mud_name": "LuminariMUD",
   "mud_ip": "127.0.0.1",
   "mud_port": 8181,
-  "mud_auth_token": "",
+  "mud_tls": false,
+  "mud_tls_servername": "",
+  "mud_max_record_bytes": 1048576,
   "mud_retry_count": 5,
   "mud_retry_delay": 30000,
   "rate_limit_per_channel": 10,
@@ -134,7 +136,10 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `mud_name` | Display name for your MUD | Required |
 | `mud_ip` | MUD server IP address | Required |
 | `mud_port` | MUD server port | Required |
-| `mud_auth_token` | Optional authentication token for MUD | "" |
+| `mud_tls` | Use certificate-validated TLS (required unless `mud_ip` is loopback) | false |
+| `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
+| `mud_max_record_bytes` | Maximum newline-delimited MUD record size; oversized records are discarded | 1048576 |
+| `MUD_AUTH_TOKEN` | Optional MUD token in `.env`; requires `mud_tls: true` | unset |
 | `mud_retry_count` | Number of reconnection attempts | 5 |
 | `mud_retry_delay` | Delay between reconnection attempts (ms) | 30000 |
 | `rate_limit_per_channel` | Messages per second per channel | 10 |
@@ -143,9 +148,21 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `largest_printable_string` | Maximum message length | 65535 |
 | `channels` | Array of channel mappings | Required |
 
+Plaintext TCP is restricted to literal loopback addresses such as `127.0.0.1`
+and `::1`; hostnames (including `localhost`) require TLS so DNS cannot redirect
+cleartext traffic. For every remote MUD, set `mud_tls` to `true` and connect to a
+TLS-capable listener or TLS-terminating proxy. Publicly trusted certificates use
+the system trust store; private certificate authorities can be supplied to
+Node.js with `NODE_EXTRA_CA_CERTS`. Authentication tokens are sent only after a
+certificate-validated TLS connection is established. `MUD_AUTH_TOKEN` is loaded
+only from the environment; legacy `mud_auth_token` values in `config.json` are
+ignored and should be removed.
+
 ## Message Format
 
-The application exchanges JSON messages with the MUD:
+The application exchanges JSON messages with the MUD. Each UTF-8 JSON record
+must end with a newline (`\n`); TCP chunks are not message boundaries, so the
+delimiter is required even when sending one record at a time.
 
 ```json
 {
@@ -262,7 +279,10 @@ Log levels can be configured via `LOG_LEVEL` environment variable (error, warn, 
 
 ### Health Check Endpoint
 
-Monitor application health at `http://localhost:3000/health`:
+Monitor application health locally at `http://127.0.0.1:3000/health`. The
+endpoint is intentionally bound to loopback because it exposes operational
+telemetry without authentication. Docker uses the endpoint only from inside the
+container; expose it externally only through an authenticated monitoring proxy.
 
 ```json
 {

@@ -71,7 +71,7 @@ See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-ste
    
    # Configure MUD connection
    nano config/config.json
-   # Set mud_host to "127.0.0.1" or "localhost"
+   # Set mud_ip to "127.0.0.1" for a local plaintext MUD
    # Set mud_port to your MUD's listener port
    # Configure channel mappings
    ```
@@ -94,7 +94,7 @@ See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-ste
    - Send a test message in a configured Discord channel
    - Check if message appears in MUD
    - Send message from MUD to verify it appears in Discord
-   - Visit health endpoint: `http://localhost:3000/health`
+   - Visit health endpoint locally: `http://127.0.0.1:3000/health`
 
 ### Configuration Details
 
@@ -110,6 +110,10 @@ HEALTH_PORT=3000                        # Health check endpoint port
 LOG_LEVEL=info                          # Logging level (error, warn, info, debug)
 ```
 
+`MUD_AUTH_TOKEN` is environment-only. If an older installation stored
+`mud_auth_token` in `config/config.json`, move it to the protected `.env` file
+and delete the JSON field; the loader intentionally ignores that legacy field.
+
 #### Configuration File (config/config.json)
 
 ```json
@@ -117,7 +121,9 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
     "mud_name": "YourMUD",
     "mud_ip": "127.0.0.1",
     "mud_port": 8181,
-    "mud_auth_token": "",                  // Optional authentication
+    "mud_tls": false,
+    "mud_tls_servername": "",
+    "mud_max_record_bytes": 1048576,
     "mud_retry_count": 5,
     "mud_retry_delay": 30000,
     "rate_limit_per_channel": 10,          // Messages per second
@@ -156,8 +162,8 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
 3. **Verify Deployment**
    ```bash
    docker compose ps                      # Check container status
-   docker compose logs -f                 # View logs
-   curl http://localhost:3000/health      # Check health endpoint
+   docker compose logs --tail=100         # View recent logs
+   docker compose exec mud-discord-chat wget -qO- http://127.0.0.1:3000/health
    ```
 
 ### Docker Commands Reference
@@ -199,7 +205,7 @@ services:
     
     # Custom health check
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -303,16 +309,18 @@ export MUD_AUTH_TOKEN="your_auth"
 
 ```bash
 # Firewall rules (example with ufw)
-ufw allow from any to any port 3000  # Health check
 ufw allow out 443/tcp                # Discord API
 ufw allow out 8181/tcp               # MUD server
 ```
 
 ### 4. Backup Strategy
 
+Keep tokens in `.env` or a secret manager, not `config/config.json`. The commands
+below remove legacy token fields before writing configuration backups.
+
 ```bash
-# Backup configuration
-cp config/config.json config/config.backup.json
+# Backup non-secret configuration
+jq 'del(.discordToken, .mud_auth_token)' config/config.json > config/config.backup.json
 
 # Backup logs (optional)
 tar -czf logs-backup-$(date +%Y%m%d).tar.gz logs/
@@ -321,14 +329,19 @@ tar -czf logs-backup-$(date +%Y%m%d).tar.gz logs/
 #!/bin/bash
 BACKUP_DIR="/backups/mud-discord"
 mkdir -p $BACKUP_DIR
-cp config/config.json $BACKUP_DIR/config-$(date +%Y%m%d).json
+jq 'del(.discordToken, .mud_auth_token)' config/config.json \
+  > $BACKUP_DIR/config-$(date +%Y%m%d).json
 ```
 
 ## Monitoring & Health Checks
 
 ### Health Endpoint
 
-The application provides a health endpoint at `http://localhost:3000/health`:
+The application provides a loopback-only health endpoint at
+`http://127.0.0.1:3000/health`. It is not published by the recommended Docker
+Compose configuration because the response contains unauthenticated operational
+telemetry. Use an authenticated reverse proxy or a colocated monitoring agent if
+remote access is required.
 
 ```json
 {
@@ -349,20 +362,39 @@ The application provides a health endpoint at `http://localhost:3000/health`:
 ### Monitoring Setup
 
 1. **Simple Monitoring Script**
+
+   Run this script on the Docker host from the Compose project directory. The
+   probe executes inside the application container, where its loopback address
+   reaches the private health endpoint. The outer `timeout` bounds the complete
+   Docker command, while `wget -T` bounds the in-container network operation.
+
    ```bash
    #!/bin/bash
    # health-check.sh
-   response=$(curl -s http://localhost:3000/health)
-   if [[ $(echo $response | jq -r '.status') != "healthy" ]]; then
+   alert_unhealthy() {
      echo "Alert: Service unhealthy"
      # Send alert (email, webhook, etc.)
+   }
+
+   if ! response=$(timeout 10s docker compose exec -T mud-discord-chat \
+     wget -T 5 -qO- http://127.0.0.1:3000/health); then
+     alert_unhealthy
+     exit 1
+   fi
+   if ! status=$(printf '%s\n' "$response" | jq -er '.status'); then
+     alert_unhealthy
+     exit 1
+   fi
+   if [[ $status != "healthy" ]]; then
+     alert_unhealthy
+     exit 1
    fi
    ```
 
 2. **Integration with Monitoring Services**
-   - **Uptime Kuma**: Add HTTP monitor for health endpoint
-   - **Prometheus**: Scrape metrics from health endpoint
-   - **Grafana**: Visualize health metrics
+   - Run the monitoring agent on the same host or container network namespace
+   - For remote monitoring, put authentication and TLS in front of the endpoint
+   - Do not publish the unauthenticated endpoint directly to an untrusted network
 
 ### Logging
 
@@ -386,13 +418,24 @@ Configure log level via `LOG_LEVEL` environment variable:
 1. **MUD Authentication**
    ```json
    {
-     "mud_auth_token": "your-secret-token"
+     "mud_tls": true,
+     "mud_tls_servername": "mud.example.com"
    }
    ```
-   The token is sent on connection:
+   Set `MUD_AUTH_TOKEN=your-secret-token` in the protected environment file or
+   secret manager; do not store it in `config/config.json`.
+   Connect to a TLS-capable listener or TLS-terminating proxy whose certificate
+   is trusted by the host. For a private CA, set `NODE_EXTRA_CA_CERTS` before
+   starting Node.js. `mud_tls_servername` is useful when `mud_ip` is an IP
+   address but the certificate identifies a hostname. The token is sent only
+   after certificate-validated TLS connects:
    ```json
    {"channel": "auth", "name": "bot", "message": "your-secret-token"}
    ```
+   Plaintext TCP is permitted only when `mud_ip` is a literal loopback address
+   such as `127.0.0.1` or `::1`. Hostnames, including `localhost`, and all remote
+   addresses require TLS. If a token is configured without TLS, the bridge logs
+   an error and does not transmit it.
 
 2. **Discord Security**
    - Bot token stored in environment variable

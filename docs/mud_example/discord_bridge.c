@@ -193,12 +193,14 @@ void init_discord_bridge(void) {
     discord_bridge->messages_sent = 0;
     discord_bridge->messages_received = 0;
     discord_bridge->messages_dropped = 0;
+    discord_bridge->oversized_records_dropped = 0;
+    discord_bridge->max_record_bytes = DISCORD_MAX_RECORD_BYTES;
     discord_bridge->num_channels = 0;
     discord_bridge->authenticated = 0;
     
-    /* Set a default auth token - should be loaded from config file in production */
-    /* Empty token means no authentication required */
-    strcpy(discord_bridge->auth_token, "");  /* Set to a secret value for security */
+    /* Keep reusable authentication disabled unless a protected runtime secret is
+     * used behind the required loopback TLS terminator. */
+    strcpy(discord_bridge->auth_token, "");
     
     /* Load configuration */
     load_discord_config();
@@ -258,11 +260,11 @@ int start_discord_server(int port) {
         log("SYSERR: Discord bridge failed to set non-blocking: %s", strerror(errno));
     }
     
-    /* Bind to port - INADDR_ANY allows connections from any interface */
+    /* Keep this plaintext sample private; terminate TLS on loopback for remote use. */
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
-    sa.sin_addr.s_addr = htonl(INADDR_ANY);  /* Binds to 0.0.0.0 - accepts from any interface */
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     
     if (bind(discord_bridge->server_socket, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         log("SYSERR: Discord bridge bind failed: %s", strerror(errno));
@@ -431,11 +433,22 @@ void send_to_discord(const char *channel, const char *name, const char *message,
     
     if (!discord_bridge || discord_bridge->client_socket == INVALID_SOCKET)
         return;
+    if (strlen(discord_bridge->auth_token) > 0 && !discord_bridge->authenticated) {
+        log("SYSERR: Discord bridge client is not authenticated, dropping message");
+        return;
+    }
     
     /* Build JSON message */
     json = build_discord_json(channel, name, message, emoted);
     json_len = strlen(json);
-    
+
+    /* Enforce the peer's configured UTF-8 record limit before buffering. */
+    if ((size_t)json_len > discord_bridge->max_record_bytes) {
+        log("SYSERR: Discord bridge record too large, dropping message");
+        discord_bridge->oversized_records_dropped++;
+        return;
+    }
+
     /* Check buffer space */
     if (discord_bridge->outbuf_len + json_len + 2 >= DISCORD_BRIDGE_BUFFER_SIZE) {
         log("SYSERR: Discord bridge output buffer full, dropping message");
@@ -697,10 +710,10 @@ char *strip_mud_colors(const char *text) {
 
 /* Check if Discord bridge is active */
 int is_discord_bridge_active(void) {
-    return (discord_bridge && 
+    return (discord_bridge &&
             discord_bridge->client_socket != INVALID_SOCKET &&
-            (discord_bridge->state == DISCORD_STATE_CONNECTED ||
-             discord_bridge->state == DISCORD_STATE_AUTHENTICATED));
+            (strlen(discord_bridge->auth_token) == 0 ||
+             discord_bridge->authenticated));
 }
 
 /* Display Discord bridge status */
@@ -724,6 +737,7 @@ void discord_bridge_status(struct char_data *ch) {
     send_to_char(ch, "Messages Sent: %d\r\n", discord_bridge->messages_sent);
     send_to_char(ch, "Messages Received: %d\r\n", discord_bridge->messages_received);
     send_to_char(ch, "Messages Dropped (Rate Limit): %d\r\n", discord_bridge->messages_dropped);
+    send_to_char(ch, "Records Dropped (Oversized): %d\r\n", discord_bridge->oversized_records_dropped);
     if (discord_bridge->client_socket != INVALID_SOCKET) {
         time_t now = time(NULL);
         send_to_char(ch, "Connection Time: %ld seconds\r\n", now - discord_bridge->connection_time);

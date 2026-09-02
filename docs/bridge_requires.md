@@ -8,7 +8,7 @@ This document specifies the requirements for the Node.js Discord bridge applicat
 ### 1. Network Connection
 - **Protocol**: TCP client connecting to MUD server
 - **Port**: 8181 (configurable)
-- **Connection Type**: Persistent TCP connection with automatic reconnection
+- **Connection Type**: Persistent literal-loopback TCP or certificate-validated TLS connection with automatic reconnection; hostname and remote plaintext connections are rejected
 - **Reconnection**: Automatic retry with exponential backoff (5 attempts, 30-second delays)
 - **Keep-alive**: Implement connection health monitoring
 
@@ -58,7 +58,8 @@ The bridge must support configurable channel mappings between Discord channels a
 
 ### 5. Authentication (Optional)
 - Support optional token-based authentication with MUD server
-- Send authentication message as first message if token is configured:
+- Require certificate-validated TLS whenever a token is configured
+- Send the authentication message as the first record only after TLS connects:
 ```json
 {
     "channel": "auth",
@@ -70,31 +71,34 @@ The bridge must support configurable channel mappings between Discord channels a
 ## Technical Implementation Requirements
 
 ### 1. Configuration Management
-```javascript
-// config.json or .env structure
+Keep non-secret runtime settings in `config/config.json`:
+
+```json
 {
-    "mud": {
-        "host": "localhost",
-        "port": 8181,
-        "authToken": "" // Optional
-    },
-    "discord": {
-        "token": "BOT_TOKEN",
-        "guildId": "GUILD_ID",
-        "channels": {
-            "gossip": "CHANNEL_ID_1",
-            "auction": "CHANNEL_ID_2",
-            "gratz": "CHANNEL_ID_3"
-        }
-    },
-    "bridge": {
-        "maxMessageLength": 65535,
-        "rateLimitPerChannel": 10, // messages per second
-        "reconnectAttempts": 5,
-        "reconnectDelay": 30000 // milliseconds
-    }
+    "mud_ip": "127.0.0.1",
+    "mud_port": 8181,
+    "mud_tls": false,
+    "channels": [
+        { "discord": "CHANNEL_ID_1", "mud": "gossip" }
+    ],
+    "largest_printable_string": 65535,
+    "rate_limit_per_channel": 10,
+    "mud_retry_count": 5,
+    "mud_retry_delay": 30000
 }
 ```
+
+Keep credentials in a protected `.env` file or secret manager, never in the
+JSON configuration:
+
+```env
+DISCORD_TOKEN=your_discord_bot_token
+# Set only when mud_tls is true:
+# MUD_AUTH_TOKEN=your_mud_auth_token
+```
+
+The loader must ignore legacy `mud_auth_token` values in `config.json`; the
+environment or injected secret-manager environment is the only supported source.
 
 ### 2. Message Processing
 
@@ -108,7 +112,7 @@ The bridge must support configurable channel mappings between Discord channels a
 7. Handle send errors gracefully
 
 #### MUD to Discord Flow:
-1. Receive JSON from TCP socket
+1. Receive newline-delimited UTF-8 JSON records from the TCP socket
 2. Parse and validate JSON
 3. Map channel to Discord channel ID
 4. Format message for Discord
@@ -127,7 +131,7 @@ The bridge must support configurable channel mappings between Discord channels a
 - **Input sanitization**: Remove @everyone, @here mentions
 - **User validation**: Strip invalid characters from usernames
 - **Message validation**: Enforce length limits
-- **Connection security**: Support TLS/SSL (future)
+- **Connection security**: Require certificate-validated TLS for hostnames and remote MUDs, restrict plaintext TCP to literal loopback IPs, and never send authentication tokens over plaintext
 - **Token storage**: Use environment variables for sensitive data
 
 ### 5. Logging Requirements
