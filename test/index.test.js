@@ -248,6 +248,7 @@ test("createApplication waits for shutdown, coalesces stops, and prevents restar
 
 test("createApplication completes every shutdown path after a partial failure", async () => {
     const calls = [];
+    let bridgeStopAttempts = 0;
     const application = createApplication({
         config: {},
         logger: { close: () => calls.push("logger:close") },
@@ -261,7 +262,8 @@ test("createApplication completes every shutdown path after a partial failure", 
             start: () => calls.push("bridge:start"),
             stop: () => {
                 calls.push("bridge:stop");
-                throw new Error("bridge close failed");
+                bridgeStopAttempts++;
+                if (bridgeStopAttempts === 1) throw new Error("bridge close failed");
             }
         }
     });
@@ -272,12 +274,57 @@ test("createApplication completes every shutdown path after a partial failure", 
         message: "Application shutdown failed"
     });
     application.start();
+    await application.stop();
+    await application.stop();
 
     assert.deepEqual(calls, [
         "health:start",
         "bridge:start",
         "bridge:stop",
         "health:stop",
+        "logger:close",
+        "bridge:stop"
+    ]);
+});
+
+test("createApplication retries a transient logger cleanup failure", async () => {
+    const calls = [];
+    let loggerCloseAttempts = 0;
+    const application = createApplication({
+        config: {},
+        logger: {
+            close: () => {
+                calls.push("logger:close");
+                loggerCloseAttempts++;
+                if (loggerCloseAttempts === 1) throw new Error("logger close failed");
+            }
+        },
+        healthServer: {
+            start: () => calls.push("health:start"),
+            stop: () => calls.push("health:stop")
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => calls.push("bridge:start"),
+            stop: () => calls.push("bridge:stop")
+        }
+    });
+
+    application.start();
+    await assert.rejects(application.stop(), {
+        name: "AggregateError",
+        message: "Application shutdown failed"
+    });
+    await application.stop();
+    await application.stop();
+
+    assert.deepEqual(calls, [
+        "health:start",
+        "bridge:start",
+        "bridge:stop",
+        "health:stop",
+        "logger:close",
         "logger:close"
     ]);
 });

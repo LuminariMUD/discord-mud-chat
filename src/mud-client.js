@@ -2,6 +2,16 @@ const { EventEmitter } = require("node:events");
 const net = require("node:net");
 const tls = require("node:tls");
 
+/** Returns whether a hostname or address is explicitly confined to loopback. */
+function isLoopbackHost(host) {
+    if (typeof host !== "string") return false;
+
+    const normalizedHost = host.toLowerCase().replace(/\.$/, "");
+    if (normalizedHost === "localhost" || normalizedHost.endsWith(".localhost")) return true;
+    if (net.isIP(normalizedHost) === 4) return normalizedHost.startsWith("127.");
+    return normalizedHost === "::1" || normalizedHost.startsWith("::ffff:127.");
+}
+
 /** Provides a reconnectable TCP or certificate-validated TLS MUD transport. */
 class MudClient extends EventEmitter {
     /** Creates a transport with injectable network modules for testing. */
@@ -22,6 +32,10 @@ class MudClient extends EventEmitter {
 
     /** Opens a fresh socket and forwards its events through this transport. */
     connect(port, host, callback) {
+        if (!this.useTls && !isLoopbackHost(host)) {
+            throw new Error("Plaintext MUD transport is restricted to loopback hosts; enable mud_tls for remote connections");
+        }
+
         const previousSocket = this.socket;
         if (previousSocket) {
             this.socket = undefined;
@@ -84,3 +98,4 @@ class MudClient extends EventEmitter {
 }
 
 module.exports = MudClient;
+module.exports.isLoopbackHost = isLoopbackHost;

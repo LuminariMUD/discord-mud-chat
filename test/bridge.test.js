@@ -197,9 +197,11 @@ function createDiscordMessage(overrides = {}) {
     return {
         content: "Hello from Discord",
         channel: { id: "discord-1" },
+        author: { id: "user-1" },
         member: {
+            id: "user-1",
             nickname: "Hero",
-            user: { bot: false, username: "Player" }
+            user: { id: "user-1", bot: false, username: "Player" }
         },
         guild: {
             members: {
@@ -392,6 +394,37 @@ test("oversized incomplete MUD records close the connection", () => {
     assert.equal(bridge.mudDataBuffer, "");
     assert.ok(errors.some(args => String(args[0]).includes("exceeded 8 bytes")));
     assert.equal(DEFAULT_MAX_MUD_RECORD_BYTES, 1024 * 1024);
+});
+
+test("complete MUD records are relayed before an oversized trailing fragment closes the connection", () => {
+    const { bridge, discordClient, mudClient } = createHarness({
+        config: { mud_max_record_bytes: 128 }
+    });
+    discordClient.addChannel("discord-1");
+    const completeRecord = mudRecord({
+        channel: "gossip",
+        name: "Ayla",
+        message: "Hello"
+    });
+
+    assert.equal(bridge.handleMudData(Buffer.concat([
+        completeRecord,
+        Buffer.alloc(129, "x")
+    ])), true);
+
+    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), ["Ayla: Hello"]);
+    assert.equal(mudClient.destroyed, true);
+    assert.equal(bridge.mudDataBuffer, "");
+});
+
+test("oversized complete MUD records close the connection without being parsed", () => {
+    const { bridge, errors, mudClient } = createHarness({
+        config: { mud_max_record_bytes: 8 }
+    });
+
+    assert.equal(bridge.handleMudData(Buffer.from("123456789\n")), false);
+    assert.equal(mudClient.destroyed, true);
+    assert.ok(errors.some(args => String(args[0]).includes("record exceeded 8 bytes")));
 });
 
 test("invalid, unmapped, and unavailable MUD messages are ignored", () => {
@@ -592,6 +625,31 @@ test("rate limiting rejects bursts and accepts the configured boundary", () => {
 
     assert.equal(mudClient.writes.length, 2);
     assert.ok(logs.some(args => String(args[0]).includes("Rate limit exceeded")));
+});
+
+test("rate limiting uses stable Discord account IDs instead of mutable nicknames", () => {
+    const { bridge, mudClient } = createHarness();
+    const renamedUser = createDiscordMessage({
+        author: { id: "user-1" },
+        member: {
+            id: "user-1",
+            nickname: "Renamed Hero",
+            user: { id: "user-1", bot: false, username: "Player" }
+        }
+    });
+    const differentUser = createDiscordMessage({
+        author: { id: "user-2" },
+        member: {
+            id: "user-2",
+            nickname: "Hero",
+            user: { id: "user-2", bot: false, username: "OtherPlayer" }
+        }
+    });
+
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), true);
+    assert.equal(bridge.handleDiscordMessage(renamedUser), false);
+    assert.equal(bridge.handleDiscordMessage(differentUser), true);
+    assert.equal(mudClient.writes.length, 2);
 });
 
 test("rate-limit cleanup removes stale entries once the map grows", () => {

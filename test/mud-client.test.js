@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const MudClient = require("../src/mud-client");
+const { isLoopbackHost } = MudClient;
 
 /** Creates an injectable network module and captures each opened fake socket. */
 function createNetworkModule({ encrypted = false, ipVersion = 0 } = {}) {
@@ -90,6 +91,22 @@ test("MudClient supports plaintext without claiming encryption", () => {
     disconnected.destroy();
 });
 
+test("MudClient restricts plaintext connections to loopback hosts", () => {
+    const netModule = createNetworkModule();
+    const client = new MudClient({ netModule });
+
+    assert.throws(
+        () => client.connect(8181, "mud.example.com", () => {}),
+        /restricted to loopback hosts/
+    );
+    assert.equal(netModule.calls.length, 0);
+    assert.equal(isLoopbackHost("localhost"), true);
+    assert.equal(isLoopbackHost("mud.localhost."), true);
+    assert.equal(isLoopbackHost("127.42.0.1"), true);
+    assert.equal(isLoopbackHost("::1"), true);
+    assert.equal(isLoopbackHost("192.0.2.10"), false);
+});
+
 test("MudClient honors an explicit TLS server name", () => {
     const netModule = createNetworkModule({ ipVersion: 4 });
     const tlsModule = createNetworkModule({ encrypted: true });
@@ -113,9 +130,9 @@ test("MudClient ignores events from superseded sockets", () => {
     const connections = [];
     client.on("data", data => received.push(data));
 
-    client.connect(8181, "mud.example.com", () => connections.push("first"));
+    client.connect(8181, "127.0.0.1", () => connections.push("first"));
     const firstSocket = netModule.calls[0].socket;
-    client.connect(8181, "mud.example.com", () => connections.push("second"));
+    client.connect(8181, "127.0.0.1", () => connections.push("second"));
     const secondSocket = netModule.calls[1].socket;
     firstSocket.finishConnect();
     firstSocket.emit("data", Buffer.from("stale"));

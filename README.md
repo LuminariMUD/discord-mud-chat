@@ -20,7 +20,7 @@ What we call the "Lumiverse":
 - 🔌 Automatic reconnection with configurable retry logic
 - 🚫 Security features (@everyone/@here mention stripping)
 - ⚡ Rate limiting to prevent spam
-- 🔐 Optional MUD authentication over certificate-validated TLS
+- 🔐 Certificate-validated TLS for remote MUD connections and authentication
 - 😊 Emoji stripping for MUD compatibility
 - 📝 Winston logging with rotation and multiple outputs
 - 🏥 Health check endpoint for monitoring
@@ -137,7 +137,7 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `mud_name` | Display name for your MUD | Required |
 | `mud_ip` | MUD server IP address | Required |
 | `mud_port` | MUD server port | Required |
-| `mud_tls` | Connect to the MUD through certificate-validated TLS | false |
+| `mud_tls` | Use certificate-validated TLS (required unless `mud_ip` is loopback) | false |
 | `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
 | `mud_max_record_bytes` | Maximum incomplete newline-delimited MUD record size | 1048576 |
 | `mud_auth_token` | Optional MUD token; sent only over TLS | "" |
@@ -149,11 +149,12 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `largest_printable_string` | Maximum message length | 65535 |
 | `channels` | Array of channel mappings | Required |
 
-When `mud_auth_token` is configured, set `mud_tls` to `true` and connect to a
-TLS-capable MUD listener or TLS-terminating proxy. Publicly trusted certificates
-use the system trust store; private certificate authorities can be supplied to
-Node.js with `NODE_EXTRA_CA_CERTS`. The token is deliberately not sent over a
-plaintext TCP connection.
+Plaintext TCP is restricted to loopback hosts such as `127.0.0.1` and
+`localhost`. For every remote MUD, set `mud_tls` to `true` and connect to a
+TLS-capable listener or TLS-terminating proxy. Publicly trusted certificates use
+the system trust store; private certificate authorities can be supplied to
+Node.js with `NODE_EXTRA_CA_CERTS`. Authentication tokens are sent only after a
+certificate-validated TLS connection is established.
 
 ## Message Format
 

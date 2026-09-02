@@ -46,6 +46,9 @@ function createApplication(options = {}) {
     let started = false;
     let closed = false;
     let stopping;
+    let bridgeStopped = false;
+    let healthServerStopped = false;
+    let loggerClosed = typeof logger.close !== "function";
     return {
         logger,
         healthServer,
@@ -62,18 +65,29 @@ function createApplication(options = {}) {
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
             if (stopping) return stopping;
-            if (closed) return;
+            if (closed && bridgeStopped && healthServerStopped && loggerClosed) return;
 
             closed = true;
             stopping = (async () => {
                 const results = await Promise.allSettled([
-                    Promise.resolve().then(() => bridge.stop()),
-                    Promise.resolve().then(() => healthServer.stop())
+                    bridgeStopped
+                        ? Promise.resolve()
+                        : Promise.resolve().then(() => bridge.stop()).then(() => {
+                            bridgeStopped = true;
+                        }),
+                    healthServerStopped
+                        ? Promise.resolve()
+                        : Promise.resolve().then(() => healthServer.stop()).then(() => {
+                            healthServerStopped = true;
+                        })
                 ]);
-                try {
-                    if (typeof logger.close === "function") logger.close();
-                } catch (error) {
-                    results.push({ status: "rejected", reason: error });
+                if (!loggerClosed) {
+                    try {
+                        await logger.close();
+                        loggerClosed = true;
+                    } catch (error) {
+                        results.push({ status: "rejected", reason: error });
+                    }
                 }
                 started = false;
 

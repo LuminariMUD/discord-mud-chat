@@ -155,17 +155,23 @@ class ChatBridge {
             : data.toString();
         const records = this.mudDataBuffer.split("\n");
         this.mudDataBuffer = records.pop();
-        if (Buffer.byteLength(this.mudDataBuffer, "utf8") > this.maxMudRecordBytes) {
-            this.logger.error(`Incomplete MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
-            this.clearMudDataBuffer();
-            this.mudClient.destroy();
-            return false;
-        }
         let relayed = false;
 
         for (const record of records) {
             if (record.trim().length === 0) continue;
+            if (Buffer.byteLength(record, "utf8") > this.maxMudRecordBytes) {
+                this.logger.error(`MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
+                this.clearMudDataBuffer();
+                this.mudClient.destroy();
+                return relayed;
+            }
             if (this.relayMudRecord(record)) relayed = true;
+        }
+
+        if (Buffer.byteLength(this.mudDataBuffer, "utf8") > this.maxMudRecordBytes) {
+            this.logger.error(`Incomplete MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
+            this.clearMudDataBuffer();
+            this.mudClient.destroy();
         }
 
         return relayed;
@@ -276,8 +282,11 @@ class ChatBridge {
 
         if (authorName.length < 1 || messageText.length < 1) return false;
 
+        const authorId = message.author?.id || message.member.user.id || message.member.id;
+        if (!authorId) return false;
+
         const now = this.now();
-        const channelKey = `${mappedChannel.mud}-${authorName}`;
+        const channelKey = `${mappedChannel.mud}-${authorId}`;
         const lastMessage = this.rateLimits.get(channelKey) || 0;
         const rateLimitMs = 1000 / (this.config.rate_limit_per_channel || 10);
 
