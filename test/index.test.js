@@ -163,7 +163,42 @@ test("createApplication stop is terminal before start", async () => {
     await application.stop();
     application.start();
 
-    assert.deepEqual(calls, []);
+    assert.deepEqual(calls, ["bridge:stop", "health:stop", "logger:close"]);
+});
+
+test("createApplication cleans up resources after partial startup", async () => {
+    const calls = [];
+    const application = createApplication({
+        config: {},
+        logger: { close: () => calls.push("logger:close") },
+        healthServer: {
+            start: () => calls.push("health:start"),
+            stop: () => calls.push("health:stop")
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => {
+                calls.push("bridge:start");
+                throw new Error("bridge start failed");
+            },
+            stop: () => calls.push("bridge:stop")
+        }
+    });
+
+    assert.throws(() => application.start(), {
+        message: "bridge start failed"
+    });
+    await application.stop();
+    application.start();
+
+    assert.deepEqual(calls, [
+        "health:start",
+        "bridge:start",
+        "bridge:stop",
+        "health:stop",
+        "logger:close"
+    ]);
 });
 
 test("createApplication waits for shutdown, coalesces stops, and prevents restart", async () => {

@@ -61,34 +61,31 @@ function createApplication(options = {}) {
         },
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
-            if (!started) {
-                closed = true;
-                return;
-            }
-            if (!stopping) {
-                closed = true;
-                stopping = (async () => {
-                    const results = await Promise.allSettled([
-                        Promise.resolve().then(() => bridge.stop()),
-                        Promise.resolve().then(() => healthServer.stop())
-                    ]);
-                    try {
-                        if (typeof logger.close === "function") logger.close();
-                    } catch (error) {
-                        results.push({ status: "rejected", reason: error });
-                    }
-                    started = false;
+            if (stopping) return stopping;
+            if (closed) return;
 
-                    const failures = results
-                        .filter(result => result.status === "rejected")
-                        .map(result => result.reason);
-                    if (failures.length > 0) {
-                        throw new AggregateError(failures, "Application shutdown failed");
-                    }
-                })().finally(() => {
-                    stopping = undefined;
-                });
-            }
+            closed = true;
+            stopping = (async () => {
+                const results = await Promise.allSettled([
+                    Promise.resolve().then(() => bridge.stop()),
+                    Promise.resolve().then(() => healthServer.stop())
+                ]);
+                try {
+                    if (typeof logger.close === "function") logger.close();
+                } catch (error) {
+                    results.push({ status: "rejected", reason: error });
+                }
+                started = false;
+
+                const failures = results
+                    .filter(result => result.status === "rejected")
+                    .map(result => result.reason);
+                if (failures.length > 0) {
+                    throw new AggregateError(failures, "Application shutdown failed");
+                }
+            })().finally(() => {
+                stopping = undefined;
+            });
             return stopping;
         }
     };
