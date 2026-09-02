@@ -8,7 +8,8 @@
     "dev": "nodemon src/index.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='config/load-config.js' --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=85"
   },
   "engines": {
     "node": ">=24.18.0",

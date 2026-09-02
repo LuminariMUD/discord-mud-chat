@@ -3,17 +3,20 @@ const path = require("path");
 const fs = require("fs");
 
 class Logger {
-    constructor() {
-        this.logDir = path.join(__dirname, "../logs");
-        
+    constructor(options = {}) {
+        this.consoleRef = options.consoleRef || console;
+        this.originalConsoleMethods = undefined;
+        this.consoleOverrides = undefined;
+        this.logDir = options.logDir || path.join(__dirname, "../logs");
+
         // Create logs directory if it doesn't exist
         if (!fs.existsSync(this.logDir)) {
             fs.mkdirSync(this.logDir, { recursive: true });
         }
-        
+
         // Create winston logger
         this.winston = winston.createLogger({
-            level: process.env.LOG_LEVEL || "info",
+            level: options.level || process.env.LOG_LEVEL || "info",
             format: winston.format.combine(
                 winston.format.timestamp(),
                 winston.format.errors({ stack: true }),
@@ -49,31 +52,58 @@ class Logger {
                 })
             ]
         });
-        
+
         // Override console methods to use winston
-        this.setupConsoleOverrides();
+        if (options.overrideConsole !== false) this.setupConsoleOverrides();
     }
 
     setupConsoleOverrides() {
-        console.log = (...args) => {
-            const message = args.join(" ");
-            this.winston.info(message);
+        if (this.originalConsoleMethods) return;
+
+        this.originalConsoleMethods = {
+            log: this.consoleRef.log,
+            error: this.consoleRef.error,
+            warn: this.consoleRef.warn,
+            debug: this.consoleRef.debug
+        };
+        this.consoleOverrides = {
+            log: (...args) => {
+                const message = args.join(" ");
+                this.winston.info(message);
+            },
+            error: (...args) => {
+                const message = args.join(" ");
+                this.winston.error(message);
+            },
+            warn: (...args) => {
+                const message = args.join(" ");
+                this.winston.warn(message);
+            },
+            debug: (...args) => {
+                const message = args.join(" ");
+                this.winston.debug(message);
+            }
         };
 
-        console.error = (...args) => {
-            const message = args.join(" ");
-            this.winston.error(message);
-        };
+        Object.assign(this.consoleRef, this.consoleOverrides);
+    }
 
-        console.warn = (...args) => {
-            const message = args.join(" ");
-            this.winston.warn(message);
-        };
-        
-        console.debug = (...args) => {
-            const message = args.join(" ");
-            this.winston.debug(message);
-        };
+    restoreConsoleOverrides() {
+        if (!this.originalConsoleMethods) return;
+
+        for (const [method, original] of Object.entries(this.originalConsoleMethods)) {
+            if (this.consoleRef[method] === this.consoleOverrides[method]) {
+                this.consoleRef[method] = original;
+            }
+        }
+
+        this.originalConsoleMethods = undefined;
+        this.consoleOverrides = undefined;
+    }
+
+    close() {
+        this.restoreConsoleOverrides();
+        this.winston.close();
     }
 }
 

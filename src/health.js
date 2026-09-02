@@ -3,6 +3,7 @@ const http = require("http");
 class HealthServer {
     constructor(port = 3000) {
         this.port = process.env.HEALTH_PORT || port;
+        this.server = undefined;
         this.stats = {
             uptime: Date.now(),
             mudConnected: false,
@@ -15,7 +16,9 @@ class HealthServer {
     }
 
     start() {
-        const server = http.createServer((req, res) => {
+        if (this.server) return this.server;
+
+        this.server = http.createServer((req, res) => {
             if (req.url === "/health" && req.method === "GET") {
                 const status = this.stats.mudConnected && this.stats.discordConnected ? 200 : 503;
                 const health = {
@@ -28,7 +31,7 @@ class HealthServer {
                     },
                     messages: this.stats.messagesRelayed
                 };
-                
+
                 res.writeHead(status, { "Content-Type": "application/json" });
                 res.end(JSON.stringify(health, null, 2));
             } else {
@@ -37,8 +40,23 @@ class HealthServer {
             }
         });
 
-        server.listen(this.port, () => {
+        this.server.listen(this.port, () => {
             console.log(`Health check endpoint available at http://localhost:${this.port}/health`);
+        });
+
+        return this.server;
+    }
+
+    stop() {
+        if (!this.server) return Promise.resolve();
+
+        const server = this.server;
+        this.server = undefined;
+        return new Promise((resolve, reject) => {
+            server.close(error => {
+                if (error) reject(error);
+                else resolve();
+            });
         });
     }
 
