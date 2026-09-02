@@ -193,6 +193,7 @@ void init_discord_bridge(void) {
     discord_bridge->messages_sent = 0;
     discord_bridge->messages_received = 0;
     discord_bridge->messages_dropped = 0;
+    discord_bridge->max_record_bytes = DISCORD_MAX_RECORD_BYTES;
     discord_bridge->num_channels = 0;
     discord_bridge->authenticated = 0;
     
@@ -435,7 +436,14 @@ void send_to_discord(const char *channel, const char *name, const char *message,
     /* Build JSON message */
     json = build_discord_json(channel, name, message, emoted);
     json_len = strlen(json);
-    
+
+    /* Enforce the peer's configured UTF-8 record limit before buffering. */
+    if ((size_t)json_len > discord_bridge->max_record_bytes) {
+        log("SYSERR: Discord bridge record too large, dropping message");
+        discord_bridge->messages_dropped++;
+        return;
+    }
+
     /* Check buffer space */
     if (discord_bridge->outbuf_len + json_len + 2 >= DISCORD_BRIDGE_BUFFER_SIZE) {
         log("SYSERR: Discord bridge output buffer full, dropping message");

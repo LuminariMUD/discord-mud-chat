@@ -18,6 +18,7 @@
 #define DISCORD_BRIDGE_MAX_MSG_LEN 65535
 #define DISCORD_BRIDGE_BUFFER_SIZE 4096
 #define DISCORD_JSON_BUFFER_SIZE 8192
+#define DISCORD_MAX_RECORD_BYTES (1024 * 1024)
 #define DISCORD_MAX_CHANNELS 20
 #define DISCORD_CONNECTION_TIMEOUT 300  /* 5 minutes idle timeout */
 #define DISCORD_RATE_LIMIT_MESSAGES 10  /* Max messages per window */
@@ -63,6 +64,7 @@ struct discord_bridge_data {
     int messages_sent;        /* Statistics: messages sent to Discord */
     int messages_received;    /* Statistics: messages received from Discord */
     int messages_dropped;     /* Statistics: messages dropped due to rate limiting */
+    size_t max_record_bytes;  /* Configured UTF-8 JSON record limit */
     char auth_token[DISCORD_AUTH_TOKEN_SIZE]; /* Authentication token */
     int authenticated;        /* Is connection authenticated? */
     struct discord_channel_config channels[DISCORD_MAX_CHANNELS];

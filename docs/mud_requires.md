@@ -182,7 +182,14 @@ function onMUDChannelMessage(channel, player, message) {
         "emoted": isEmote(message) ? 1 : 0
     }
     
-    sendToDiscordBridge(JSON.stringify(discordMessage) + "\n")
+    record = JSON.stringify(discordMessage)
+    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
+    if (utf8ByteLength(record) > maxRecordBytes) {
+        log("Oversized Discord bridge record dropped")
+        return
+    }
+
+    sendToDiscordBridge(record + "\n")
 }
 ```
 
@@ -371,10 +378,12 @@ The Discord bridge now supports multiple deployment methods:
 import socket
 import json
 import threading
+import codecs
 
 class DiscordBridge:
-    def __init__(self, port=8181):
+    def __init__(self, port=8181, max_record_bytes=1024 * 1024):
         self.port = port
+        self.max_record_bytes = max_record_bytes
         self.socket = None
         self.client = None
         
@@ -392,17 +401,34 @@ class DiscordBridge:
     
     def handle_client(self):
         buffer = ""
+        decoder = codecs.getincrementaldecoder('utf-8')()
+        discarding_oversized_record = False
         while True:
             try:
-                data = self.client.recv(4096).decode('utf-8')
+                data = self.client.recv(4096)
                 if not data:
                     break
-                    
-                buffer += data
+
+                decoded_data = decoder.decode(data)
+                if discarding_oversized_record:
+                    if '\n' not in decoded_data:
+                        continue
+                    _, decoded_data = decoded_data.split('\n', 1)
+                    discarding_oversized_record = False
+
+                buffer += decoded_data
                 while '\n' in buffer:
                     line, buffer = buffer.split('\n', 1)
+                    if len(line.encode('utf-8')) > self.max_record_bytes:
+                        print("Oversized Discord bridge record dropped")
+                        continue
                     self.process_message(line)
-                    
+
+                if len(buffer.encode('utf-8')) > self.max_record_bytes:
+                    print("Oversized incomplete Discord bridge record dropped")
+                    buffer = ""
+                    discarding_oversized_record = True
+
             except Exception as e:
                 print(f"Error handling client: {e}")
                 break
@@ -433,8 +459,13 @@ class DiscordBridge:
             'emoted': emoted
         })
         
+        encoded_record = (data + '\n').encode('utf-8')
+        if len(encoded_record) - 1 > self.max_record_bytes:
+            print("Oversized Discord bridge record dropped")
+            return
+
         try:
-            self.client.send((data + '\n').encode('utf-8'))
+            self.client.sendall(encoded_record)
         except Exception as e:
             print(f"Error sending to Discord: {e}")
     
