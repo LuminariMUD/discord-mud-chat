@@ -12,7 +12,7 @@ This document outlines the comprehensive technical requirements for MUD-side imp
 - **Connection Type**: Persistent TCP connection
 - **Role**: MUD acts as TCP server, Discord bridge acts as TCP client
 - **Port**: Configurable (example: 8181)
-- **IP Binding**: Should bind to appropriate interface (127.0.0.1 for local, or external IP for remote connections)
+- **IP Binding**: Bind plaintext listeners to `127.0.0.1`; remote access requires a certificate-validating TLS listener or a TLS terminator that forwards only over loopback
 
 ### Connection Management
 The MUD server must handle:
@@ -204,6 +204,7 @@ function onMUDChannelMessage(channel, player, message) {
 - Optional authentication token/password
 - Require certificate-validated TLS whenever authentication is enabled
 - Send only after the TLS connection is established
+- Do not send MUD-to-Discord records until required client authentication succeeds
 - Reject unauthorized connections
 
 #### 3. Rate Limiting
@@ -364,8 +365,8 @@ The Discord bridge now supports multiple deployment methods:
 3. **Docker Container**: `docker compose up -d`
 
 ### Future Enhancements
-1. **Bidirectional authentication**
-2. **Message encryption (TLS)**
+1. **Mutual TLS authentication**
+2. **Certificate rotation automation**
 3. **Compression for high-volume channels**
 4. **Rich message support** (attachments, reactions)
 5. **Command bridge** for MUD commands via Discord
