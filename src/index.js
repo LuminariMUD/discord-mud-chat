@@ -44,6 +44,7 @@ function createApplication(options = {}) {
     });
 
     let started = false;
+    let closed = false;
     let stopping;
     return {
         logger,
@@ -53,27 +54,37 @@ function createApplication(options = {}) {
         bridge,
         /** Starts the health endpoint and message bridge once. */
         start() {
-            if (started) return;
+            if (started || closed) return;
             healthServer.start();
             bridge.start();
             started = true;
         },
-        /** Waits for both runtime services to stop before closing the logger. */
+        /** Drains both runtime services and permanently closes the application. */
         async stop() {
             if (!started) return;
             if (!stopping) {
+                closed = true;
                 stopping = (async () => {
+                    const results = await Promise.allSettled([
+                        Promise.resolve().then(() => bridge.stop()),
+                        Promise.resolve().then(() => healthServer.stop())
+                    ]);
                     try {
-                        await Promise.all([
-                            bridge.stop(),
-                            healthServer.stop()
-                        ]);
                         if (typeof logger.close === "function") logger.close();
-                        started = false;
-                    } finally {
-                        stopping = undefined;
+                    } catch (error) {
+                        results.push({ status: "rejected", reason: error });
                     }
-                })();
+                    started = false;
+
+                    const failures = results
+                        .filter(result => result.status === "rejected")
+                        .map(result => result.reason);
+                    if (failures.length > 0) {
+                        throw new AggregateError(failures, "Application shutdown failed");
+                    }
+                })().finally(() => {
+                    stopping = undefined;
+                });
             }
             return stopping;
         }

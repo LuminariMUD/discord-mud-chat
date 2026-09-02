@@ -45,10 +45,16 @@ class MudClient extends EventEmitter {
 
         this.socket = socket;
         this.encrypted = false;
-        socket.on("data", data => this.emit("data", data));
-        socket.on("error", error => this.emit("error", error));
+        socket.on("data", data => {
+            if (this.socket === socket) this.emit("data", data);
+        });
+        socket.on("error", error => {
+            if (this.socket === socket) this.emit("error", error);
+        });
         socket.on("close", hadError => {
-            if (this.socket === socket) this.encrypted = false;
+            if (this.socket !== socket) return;
+            this.socket = undefined;
+            this.encrypted = false;
             this.emit("close", hadError);
         });
         return this;

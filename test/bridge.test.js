@@ -609,7 +609,7 @@ test("rate-limit cleanup removes stale entries once the map grows", () => {
 });
 
 test("stop cancels timers and destroys both clients", () => {
-    const { bridge, discordClient, mudClient, timers } = createHarness({
+    const { bridge, discordClient, healthServer, mudClient, timers } = createHarness({
         config: { mud_infinite_retries: true }
     });
     bridge.start();
@@ -621,21 +621,28 @@ test("stop cancels timers and destroys both clients", () => {
 
     assert.equal(discordClient.destroyed, true);
     assert.equal(mudClient.destroyed, true);
+    assert.deepEqual(healthServer.mudConnected.slice(-1), [false]);
+    assert.deepEqual(healthServer.discordConnected.slice(-1), [false]);
     assert.equal(timers.clearedIntervals.length, 1);
     assert.equal(timers.clearedTimeouts.length, 1);
     assert.equal(mudClient.connectCalls.length, 1);
 });
 
 test("late connection callbacks and errors cannot restart a stopped bridge", () => {
-    const { bridge, healthServer, mudClient, timers } = createHarness();
+    const { bridge, discordClient, healthServer, mudClient, timers } = createHarness();
     bridge.start();
     bridge.stop();
 
     mudClient.completeConnection();
     bridge.handleMudError(new Error("late error"));
+    discordClient.emit("clientReady", { user: { tag: "Late#0001" } });
+    discordClient.emit("messageCreate", createDiscordMessage());
 
-    assert.deepEqual(healthServer.mudConnected, []);
+    assert.deepEqual(healthServer.mudConnected, [false]);
+    assert.deepEqual(healthServer.discordConnected, [false]);
     assert.deepEqual(mudClient.writes, []);
     assert.deepEqual(timers.intervals, []);
     assert.deepEqual(timers.timeouts, []);
+    assert.equal(mudClient.listenerCount("data"), 0);
+    assert.equal(discordClient.listenerCount("messageCreate"), 0);
 });

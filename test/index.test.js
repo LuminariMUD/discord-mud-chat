@@ -143,7 +143,7 @@ test("createApplication configures the default MUD transport for TLS", () => {
     assert.equal(application.mudClient.servername, "mud.example.com");
 });
 
-test("createApplication waits for shutdown and coalesces concurrent stops", async () => {
+test("createApplication waits for shutdown, coalesces stops, and prevents restart", async () => {
     const calls = [];
     let finishHealthStop;
     const healthStopped = new Promise(resolve => {
@@ -171,6 +171,7 @@ test("createApplication waits for shutdown and coalesces concurrent stops", asyn
     const firstStop = application.stop();
     const secondStop = application.stop();
     application.start();
+    await Promise.resolve();
 
     assert.deepEqual(calls, [
         "health:start",
@@ -184,7 +185,43 @@ test("createApplication waits for shutdown and coalesces concurrent stops", asyn
     assert.deepEqual(calls.slice(-1), ["logger:close"]);
 
     application.start();
-    assert.deepEqual(calls.slice(-2), ["health:start", "bridge:start"]);
+    assert.deepEqual(calls.slice(-1), ["logger:close"]);
+});
+
+test("createApplication completes every shutdown path after a partial failure", async () => {
+    const calls = [];
+    const application = createApplication({
+        config: {},
+        logger: { close: () => calls.push("logger:close") },
+        healthServer: {
+            start: () => calls.push("health:start"),
+            stop: () => calls.push("health:stop")
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => calls.push("bridge:start"),
+            stop: () => {
+                calls.push("bridge:stop");
+                throw new Error("bridge close failed");
+            }
+        }
+    });
+
+    application.start();
+    await assert.rejects(application.stop(), {
+        name: "AggregateError",
+        message: "Application shutdown failed"
+    });
+    application.start();
+
+    assert.deepEqual(calls, [
+        "health:start",
+        "bridge:start",
+        "bridge:stop",
+        "health:stop",
+        "logger:close"
+    ]);
 });
 
 test("registerShutdownHandlers handles SIGTERM and exits cleanly", async () => {

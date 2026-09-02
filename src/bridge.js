@@ -42,6 +42,13 @@ class ChatBridge {
         this.heartbeatInterval = undefined;
         this.reconnectTimeouts = new Set();
         this.eventsBound = false;
+        this.eventHandlers = {
+            mudClose: hadError => this.handleMudClose(hadError),
+            mudData: data => this.handleMudData(data),
+            mudError: error => this.handleMudError(error),
+            discordReady: client => this.handleDiscordReady(client),
+            discordMessage: message => this.handleDiscordMessage(message)
+        };
         this.stopped = false;
         this.mudDataBuffer = "";
         this.mudDecoder = new StringDecoder("utf8");
@@ -63,11 +70,23 @@ class ChatBridge {
         if (this.eventsBound) return;
 
         this.eventsBound = true;
-        this.mudClient.on("close", hadError => this.handleMudClose(hadError));
-        this.mudClient.on("data", data => this.handleMudData(data));
-        this.mudClient.on("error", error => this.handleMudError(error));
-        this.discordClient.once(this.events.ClientReady, client => this.handleDiscordReady(client));
-        this.discordClient.on(this.events.MessageCreate, message => this.handleDiscordMessage(message));
+        this.mudClient.on("close", this.eventHandlers.mudClose);
+        this.mudClient.on("data", this.eventHandlers.mudData);
+        this.mudClient.on("error", this.eventHandlers.mudError);
+        this.discordClient.once(this.events.ClientReady, this.eventHandlers.discordReady);
+        this.discordClient.on(this.events.MessageCreate, this.eventHandlers.discordMessage);
+    }
+
+    /** Removes all transport event handlers owned by this bridge. */
+    unbindEvents() {
+        if (!this.eventsBound) return;
+
+        this.mudClient.off("close", this.eventHandlers.mudClose);
+        this.mudClient.off("data", this.eventHandlers.mudData);
+        this.mudClient.off("error", this.eventHandlers.mudError);
+        this.discordClient.off(this.events.ClientReady, this.eventHandlers.discordReady);
+        this.discordClient.off(this.events.MessageCreate, this.eventHandlers.discordMessage);
+        this.eventsBound = false;
     }
 
     /** Opens the configured MUD socket connection. */
@@ -114,6 +133,8 @@ class ChatBridge {
 
     /** Updates health and schedules reconnection after a clean MUD disconnect. */
     handleMudClose(hadError) {
+        if (this.stopped) return;
+
         this.logger.log(`Disconnected from ${this.config.mud_name} ${this.config.mud_ip}:${this.config.mud_port}`);
         this.healthServer.setMudConnected(false);
         this.clearHeartbeat();
@@ -127,6 +148,8 @@ class ChatBridge {
 
     /** Buffers TCP chunks and relays every complete newline-delimited MUD record. */
     handleMudData(data) {
+        if (this.stopped) return false;
+
         this.mudDataBuffer += Buffer.isBuffer(data)
             ? this.mudDecoder.write(data)
             : data.toString();
@@ -191,8 +214,8 @@ class ChatBridge {
 
     /** Applies the configured retry policy after a MUD socket error. */
     handleMudError(error) {
-        this.logger.error("Error received from mud", error);
         if (this.stopped) return;
+        this.logger.error("Error received from mud", error);
 
         if (this.config.mud_infinite_retries) {
             this.logger.log(`Retry number ${++this.retries}...`);
@@ -208,6 +231,8 @@ class ChatBridge {
 
     /** Marks Discord connected and verifies access to configured channels. */
     handleDiscordReady(client) {
+        if (this.stopped) return Promise.resolve([]);
+
         this.logger.log(`Logged into Discord as ${client.user.tag}.`);
         this.healthServer.setDiscordConnected(true);
 
@@ -227,6 +252,8 @@ class ChatBridge {
 
     /** Sanitizes and relays one eligible Discord message to the MUD. */
     handleDiscordMessage(message) {
+        if (this.stopped) return false;
+
         if (message.content.length < 1) return false;
         if (message.content.length > this.config.largest_printable_string) return false;
 
@@ -307,7 +334,10 @@ class ChatBridge {
 
     /** Cancels scheduled work and closes both transport clients. */
     stop() {
+        if (this.stopped) return;
+
         this.stopped = true;
+        this.unbindEvents();
         this.clearHeartbeat();
         this.clearMudDataBuffer();
 
@@ -316,6 +346,8 @@ class ChatBridge {
         }
         this.reconnectTimeouts.clear();
 
+        this.healthServer.setMudConnected(false);
+        this.healthServer.setDiscordConnected(false);
         this.discordClient.destroy();
         this.mudClient.destroy();
     }

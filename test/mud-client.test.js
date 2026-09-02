@@ -64,9 +64,6 @@ test("MudClient opens certificate-validated TLS and forwards socket events", () 
     assert.deepEqual(received.errors, [socketError]);
     assert.deepEqual(received.closes, [true]);
     assert.equal(client.encrypted, false);
-
-    client.destroy();
-    assert.equal(socket.destroyed, true);
     assert.equal(client.socket, undefined);
 });
 
@@ -84,6 +81,9 @@ test("MudClient supports plaintext without claiming encryption", () => {
     });
     assert.equal(tlsModule.calls.length, 0);
     assert.equal(client.encrypted, false);
+    client.destroy();
+    assert.equal(netModule.calls[0].socket.destroyed, true);
+    assert.equal(client.socket, undefined);
 
     const disconnected = new MudClient({ netModule, tlsModule });
     assert.throws(() => disconnected.write("hello"), /not connected/);
@@ -104,4 +104,22 @@ test("MudClient honors an explicit TLS server name", () => {
 
     assert.equal(tlsModule.calls[0].options.servername, "mud.example.com");
     assert.equal(tlsModule.calls[0].options.rejectUnauthorized, true);
+});
+
+test("MudClient ignores events from superseded sockets", () => {
+    const netModule = createNetworkModule();
+    const client = new MudClient({ netModule });
+    const received = [];
+    client.on("data", data => received.push(data));
+
+    client.connect(8181, "mud.example.com", () => {});
+    const firstSocket = netModule.calls[0].socket;
+    client.connect(8181, "mud.example.com", () => {});
+    const secondSocket = netModule.calls[1].socket;
+    firstSocket.emit("data", Buffer.from("stale"));
+    firstSocket.emit("close", false);
+    secondSocket.emit("data", Buffer.from("current"));
+
+    assert.deepEqual(received, [Buffer.from("current")]);
+    assert.equal(client.socket, secondSocket);
 });
