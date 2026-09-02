@@ -110,16 +110,21 @@ test("MudClient ignores events from superseded sockets", () => {
     const netModule = createNetworkModule();
     const client = new MudClient({ netModule });
     const received = [];
+    const connections = [];
     client.on("data", data => received.push(data));
 
-    client.connect(8181, "mud.example.com", () => {});
+    client.connect(8181, "mud.example.com", () => connections.push("first"));
     const firstSocket = netModule.calls[0].socket;
-    client.connect(8181, "mud.example.com", () => {});
+    client.connect(8181, "mud.example.com", () => connections.push("second"));
     const secondSocket = netModule.calls[1].socket;
+    firstSocket.finishConnect();
     firstSocket.emit("data", Buffer.from("stale"));
     firstSocket.emit("close", false);
+    secondSocket.finishConnect();
     secondSocket.emit("data", Buffer.from("current"));
 
+    assert.equal(firstSocket.destroyed, true);
+    assert.deepEqual(connections, ["second"]);
     assert.deepEqual(received, [Buffer.from("current")]);
     assert.equal(client.socket, secondSocket);
 });

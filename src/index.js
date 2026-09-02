@@ -61,7 +61,10 @@ function createApplication(options = {}) {
         },
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
-            if (!started) return;
+            if (!started) {
+                closed = true;
+                return;
+            }
             if (!stopping) {
                 closed = true;
                 stopping = (async () => {

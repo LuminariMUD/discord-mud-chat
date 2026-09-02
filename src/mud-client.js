@@ -22,8 +22,16 @@ class MudClient extends EventEmitter {
 
     /** Opens a fresh socket and forwards its events through this transport. */
     connect(port, host, callback) {
+        const previousSocket = this.socket;
+        if (previousSocket) {
+            this.socket = undefined;
+            this.encrypted = false;
+            previousSocket.destroy();
+        }
+
         let socket;
         const handleConnect = () => {
+            if (this.socket !== socket) return;
             this.encrypted = socket.encrypted === true;
             callback();
         };

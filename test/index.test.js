@@ -143,6 +143,29 @@ test("createApplication configures the default MUD transport for TLS", () => {
     assert.equal(application.mudClient.servername, "mud.example.com");
 });
 
+test("createApplication stop is terminal before start", async () => {
+    const calls = [];
+    const application = createApplication({
+        config: {},
+        logger: { close: () => calls.push("logger:close") },
+        healthServer: {
+            start: () => calls.push("health:start"),
+            stop: () => calls.push("health:stop")
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => calls.push("bridge:start"),
+            stop: () => calls.push("bridge:stop")
+        }
+    });
+
+    await application.stop();
+    application.start();
+
+    assert.deepEqual(calls, []);
+});
+
 test("createApplication waits for shutdown, coalesces stops, and prevents restart", async () => {
     const calls = [];
     let finishHealthStop;
