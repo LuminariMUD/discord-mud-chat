@@ -3,6 +3,7 @@ const emojiRegexText = require("emoji-regex");
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
 
+/** Removes Discord custom emoji and Unicode emoji from a string. */
 function stripEmoji(value, emojiRegexFactory = emojiRegexText) {
     const customEmoji = /<a?:\w+:\d{17,20}>/g;
     const unicodeEmoji = emojiRegexFactory();
@@ -10,7 +11,9 @@ function stripEmoji(value, emojiRegexFactory = emojiRegexText) {
     return value.replace(customEmoji, "").replace(unicodeEmoji, "");
 }
 
+/** Relays messages and connection state between Discord and a MUD server. */
 class ChatBridge {
+    /** Creates a bridge using injected transport, health, logging, and timing services. */
     constructor({
         config,
         discordClient,
@@ -40,13 +43,17 @@ class ChatBridge {
         this.stopped = false;
     }
 
+    /** Starts the Discord login, event listeners, and MUD connection. */
     start() {
         this.stopped = false;
         this.bindEvents();
-        this.discordClient.login(this.config.discordToken);
+        this.discordClient.login(this.config.discordToken).catch(error => {
+            this.logger.error("Failed to log in to Discord:", error);
+        });
         this.connectToMud();
     }
 
+    /** Registers transport event handlers once. */
     bindEvents() {
         if (this.eventsBound) return;
 
@@ -58,12 +65,14 @@ class ChatBridge {
         this.discordClient.on(this.events.MessageCreate, message => this.handleDiscordMessage(message));
     }
 
+    /** Opens the configured MUD socket connection. */
     connectToMud() {
         this.mudClient.connect(this.config.mud_port, this.config.mud_ip, () => {
             this.handleMudConnected();
         });
     }
 
+    /** Authenticates a connected MUD socket and starts its heartbeat. */
     handleMudConnected() {
         if (this.stopped) return;
 
@@ -96,6 +105,7 @@ class ChatBridge {
         }, HEARTBEAT_INTERVAL_MS);
     }
 
+    /** Updates health and schedules reconnection after a clean MUD disconnect. */
     handleMudClose(hadError) {
         this.logger.log(`Disconnected from ${this.config.mud_name} ${this.config.mud_ip}:${this.config.mud_port}`);
         this.healthServer.setMudConnected(false);
@@ -107,6 +117,7 @@ class ChatBridge {
         }
     }
 
+    /** Parses and relays one MUD payload to its mapped Discord channel. */
     handleMudData(data) {
         let messageData;
 
@@ -127,14 +138,18 @@ class ChatBridge {
             const message = messageData.emoted === 1
                 ? `${messageData.message}`
                 : `${messageData.name}: ${messageData.message}`;
-            discordChannel.send(message);
-            this.healthServer.incrementMudToDiscord();
+            discordChannel.send(message)
+                .then(() => this.healthServer.incrementMudToDiscord())
+                .catch(error => {
+                    this.logger.error(`Failed to send message to Discord channel ${channel.discord}:`, error);
+                });
             relayed = true;
         }
 
         return relayed;
     }
 
+    /** Applies the configured retry policy after a MUD socket error. */
     handleMudError(error) {
         this.logger.error("Error received from mud", error);
         if (this.stopped) return;
@@ -151,6 +166,7 @@ class ChatBridge {
         }
     }
 
+    /** Marks Discord connected and verifies access to configured channels. */
     handleDiscordReady(client) {
         this.logger.log(`Logged into Discord as ${client.user.tag}.`);
         this.healthServer.setDiscordConnected(true);
@@ -169,6 +185,7 @@ class ChatBridge {
         )));
     }
 
+    /** Sanitizes and relays one eligible Discord message to the MUD. */
     handleDiscordMessage(message) {
         if (message.content.length < 1) return false;
         if (message.content.length > this.config.largest_printable_string) return false;
@@ -214,6 +231,7 @@ class ChatBridge {
         return true;
     }
 
+    /** Removes expired rate-limit entries when the cache grows large. */
     cleanRateLimits(now) {
         if (this.rateLimits.size <= 100) return;
 
@@ -223,6 +241,7 @@ class ChatBridge {
         }
     }
 
+    /** Schedules one tracked MUD reconnection attempt. */
     scheduleReconnect() {
         let timeout;
         timeout = this.timers.setTimeout(() => {
@@ -233,10 +252,12 @@ class ChatBridge {
         return timeout;
     }
 
+    /** Writes one newline-delimited JSON message to the MUD socket. */
     writeToMud(message) {
         this.mudClient.write(`${JSON.stringify(message)}\n`);
     }
 
+    /** Cancels the active heartbeat timer, if any. */
     clearHeartbeat() {
         if (this.heartbeatInterval === undefined) return;
 
@@ -244,6 +265,7 @@ class ChatBridge {
         this.heartbeatInterval = undefined;
     }
 
+    /** Cancels scheduled work and closes both transport clients. */
     stop() {
         this.stopped = true;
         this.clearHeartbeat();

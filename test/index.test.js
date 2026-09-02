@@ -3,7 +3,7 @@ const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const { createApplication, main, registerShutdownHandlers } = require("../src/index");
 
-test("createApplication composes, starts, and stops runtime dependencies once", () => {
+test("createApplication composes, starts, and stops runtime dependencies once", async () => {
     const calls = [];
     const config = { discordToken: "token" };
     const gatewayIntentBits = {
@@ -80,8 +80,8 @@ test("createApplication composes, starts, and stops runtime dependencies once", 
 
     application.start();
     application.start();
-    application.stop();
-    application.stop();
+    await application.stop();
+    await application.stop();
 
     assert.deepEqual(calls, [
         ["logger:construct", loggerOptions],
@@ -93,7 +93,7 @@ test("createApplication composes, starts, and stops runtime dependencies once", 
     ]);
 });
 
-test("createApplication accepts prebuilt dependencies", () => {
+test("createApplication accepts prebuilt dependencies", async () => {
     const calls = [];
     const dependencies = {
         logger: { close: () => calls.push("logger") },
@@ -111,7 +111,7 @@ test("createApplication accepts prebuilt dependencies", () => {
 
     const application = createApplication({ config: {}, ...dependencies });
     application.start();
-    application.stop();
+    await application.stop();
 
     assert.equal(application.logger, dependencies.logger);
     assert.equal(application.healthServer, dependencies.healthServer);
@@ -127,7 +127,51 @@ test("createApplication accepts prebuilt dependencies", () => {
     ]);
 });
 
-test("registerShutdownHandlers handles SIGTERM and exits cleanly", () => {
+test("createApplication waits for shutdown and coalesces concurrent stops", async () => {
+    const calls = [];
+    let finishHealthStop;
+    const healthStopped = new Promise(resolve => {
+        finishHealthStop = resolve;
+    });
+    const application = createApplication({
+        config: {},
+        logger: { close: () => calls.push("logger:close") },
+        healthServer: {
+            start: () => calls.push("health:start"),
+            stop: () => {
+                calls.push("health:stop");
+                return healthStopped;
+            }
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => calls.push("bridge:start"),
+            stop: () => calls.push("bridge:stop")
+        }
+    });
+
+    application.start();
+    const firstStop = application.stop();
+    const secondStop = application.stop();
+    application.start();
+
+    assert.deepEqual(calls, [
+        "health:start",
+        "bridge:start",
+        "bridge:stop",
+        "health:stop"
+    ]);
+
+    finishHealthStop();
+    await Promise.all([firstStop, secondStop]);
+    assert.deepEqual(calls.slice(-1), ["logger:close"]);
+
+    application.start();
+    assert.deepEqual(calls.slice(-2), ["health:start", "bridge:start"]);
+});
+
+test("registerShutdownHandlers handles SIGTERM and exits cleanly", async () => {
     const processRef = new EventEmitter();
     const exitCodes = [];
     const logs = [];
@@ -140,7 +184,7 @@ test("registerShutdownHandlers handles SIGTERM and exits cleanly", () => {
         { log: message => logs.push(message) }
     );
 
-    processRef.emit("SIGTERM");
+    await shutdown("SIGTERM");
 
     assert.equal(stops, 1);
     assert.deepEqual(exitCodes, [0]);
@@ -148,23 +192,45 @@ test("registerShutdownHandlers handles SIGTERM and exits cleanly", () => {
     assert.equal(typeof shutdown, "function");
 });
 
-test("registerShutdownHandlers handles SIGINT", () => {
+test("registerShutdownHandlers handles SIGINT", async () => {
     const processRef = new EventEmitter();
     const exitCodes = [];
     const logs = [];
     let stops = 0;
     processRef.exit = code => exitCodes.push(code);
 
-    registerShutdownHandlers(
+    const shutdown = registerShutdownHandlers(
         { stop: () => stops++ },
         processRef,
         { log: message => logs.push(message) }
     );
-    processRef.emit("SIGINT");
+    await shutdown("SIGINT");
 
     assert.equal(stops, 1);
     assert.deepEqual(exitCodes, [0]);
     assert.deepEqual(logs, ["SIGINT received, closing connections..."]);
+});
+
+test("registerShutdownHandlers reports shutdown failures before exiting", async () => {
+    const processRef = new EventEmitter();
+    const exitCodes = [];
+    const errors = [];
+    processRef.exit = code => exitCodes.push(code);
+    const shutdownError = new Error("close failed");
+    const shutdown = registerShutdownHandlers(
+        { stop: () => Promise.reject(shutdownError) },
+        processRef,
+        {
+            log() {},
+            error: (...args) => errors.push(args)
+        }
+    );
+
+    await shutdown("SIGTERM");
+
+    assert.deepEqual(exitCodes, [1]);
+    assert.equal(errors[0][0], "Failed to shut down cleanly:");
+    assert.equal(errors[0][1], shutdownError);
 });
 
 test("main starts an injected application and registers shutdown handlers", () => {

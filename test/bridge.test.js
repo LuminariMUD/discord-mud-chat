@@ -60,7 +60,10 @@ class FakeDiscordClient extends EventEmitter {
 
     addChannel(id) {
         this.channels.cache.set(id, {
-            send: message => this.sentMessages.push({ id, message })
+            send: message => {
+                this.sentMessages.push({ id, message });
+                return Promise.resolve();
+            }
         });
     }
 
@@ -261,7 +264,7 @@ test("a MUD connection skips authentication when no token is configured", () => 
     assert.deepEqual(mudClient.writes, []);
 });
 
-test("MUD messages relay to mapped Discord channels with emote formatting", () => {
+test("MUD messages relay to mapped Discord channels with emote formatting", async () => {
     const { bridge, discordClient, healthServer } = createHarness();
     discordClient.addChannel("discord-1");
 
@@ -282,7 +285,31 @@ test("MUD messages relay to mapped Discord channels with emote formatting", () =
         { id: "discord-1", message: "Ayla: Hello" },
         { id: "discord-1", message: "waves" }
     ]);
+    await Promise.resolve();
     assert.equal(healthServer.mudToDiscord, 2);
+});
+
+test("Discord login and channel delivery failures are logged", async () => {
+    const { bridge, discordClient, errors, healthServer } = createHarness();
+    discordClient.login = token => {
+        discordClient.loginCalls.push(token);
+        return Promise.reject(new Error("login rejected"));
+    };
+    discordClient.channels.cache.set("discord-1", {
+        send: () => Promise.reject(new Error("send rejected"))
+    });
+
+    bridge.start();
+    assert.equal(bridge.handleMudData(Buffer.from(JSON.stringify({
+        channel: "gossip",
+        name: "Ayla",
+        message: "Hello"
+    }))), true);
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(healthServer.mudToDiscord, 0);
+    assert.ok(errors.some(args => String(args[0]).includes("log in to Discord")));
+    assert.ok(errors.some(args => String(args[0]).includes("discord-1")));
 });
 
 test("invalid, unmapped, and unavailable MUD messages are ignored", () => {

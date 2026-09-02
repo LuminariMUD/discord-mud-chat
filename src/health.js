@@ -1,6 +1,8 @@
 const http = require("http");
 
+/** Exposes bridge connection and relay statistics over HTTP. */
 class HealthServer {
+    /** Creates a health server on the environment or caller-provided port. */
     constructor(port = 3000) {
         this.port = process.env.HEALTH_PORT || port;
         this.server = undefined;
@@ -15,6 +17,7 @@ class HealthServer {
         };
     }
 
+    /** Starts the health listener once and returns its HTTP server. */
     start() {
         if (this.server) return this.server;
 
@@ -47,6 +50,7 @@ class HealthServer {
         return this.server;
     }
 
+    /** Stops the health listener after active connections drain. */
     stop() {
         if (!this.server) return Promise.resolve();
 
@@ -60,18 +64,22 @@ class HealthServer {
         });
     }
 
+    /** Records whether the MUD transport is connected. */
     setMudConnected(connected) {
         this.stats.mudConnected = connected;
     }
 
+    /** Records whether the Discord transport is connected. */
     setDiscordConnected(connected) {
         this.stats.discordConnected = connected;
     }
 
+    /** Records a successfully delivered MUD-to-Discord message. */
     incrementMudToDiscord() {
         this.stats.messagesRelayed.mudToDiscord++;
     }
 
+    /** Records a Discord-to-MUD message. */
     incrementDiscordToMud() {
         this.stats.messagesRelayed.discordToMud++;
     }

@@ -2,7 +2,9 @@ const winston = require("winston");
 const path = require("path");
 const fs = require("fs");
 
+/** Writes structured console and file logs through Winston. */
 class Logger {
+    /** Creates the Winston transports and optionally redirects console methods. */
     constructor(options = {}) {
         this.consoleRef = options.consoleRef || console;
         this.originalConsoleMethods = undefined;
@@ -57,6 +59,7 @@ class Logger {
         if (options.overrideConsole !== false) this.setupConsoleOverrides();
     }
 
+    /** Routes console calls through the configured Winston logger. */
     setupConsoleOverrides() {
         if (this.originalConsoleMethods) return;
 
@@ -88,6 +91,7 @@ class Logger {
         Object.assign(this.consoleRef, this.consoleOverrides);
     }
 
+    /** Restores console methods still owned by this logger instance. */
     restoreConsoleOverrides() {
         if (!this.originalConsoleMethods) return;
 
@@ -101,6 +105,7 @@ class Logger {
         this.consoleOverrides = undefined;
     }
 
+    /** Restores the console and closes all Winston transports. */
     close() {
         this.restoreConsoleOverrides();
         this.winston.close();

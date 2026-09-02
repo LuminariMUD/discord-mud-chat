@@ -5,6 +5,7 @@ const Logger = require("./logger");
 const HealthServer = require("./health");
 const { ChatBridge } = require("./bridge");
 
+/** Composes the bridge runtime and provides idempotent lifecycle controls. */
 function createApplication(options = {}) {
     const LoggerClass = options.LoggerClass || Logger;
     const logger = options.logger || new LoggerClass(options.loggerOptions);
@@ -36,33 +37,54 @@ function createApplication(options = {}) {
     });
 
     let started = false;
+    let stopping;
     return {
         logger,
         healthServer,
         discordClient,
         mudClient,
         bridge,
+        /** Starts the health endpoint and message bridge once. */
         start() {
             if (started) return;
             healthServer.start();
             bridge.start();
             started = true;
         },
-        stop() {
+        /** Waits for both runtime services to stop before closing the logger. */
+        async stop() {
             if (!started) return;
-            bridge.stop();
-            healthServer.stop();
-            if (typeof logger.close === "function") logger.close();
-            started = false;
+            if (!stopping) {
+                stopping = (async () => {
+                    try {
+                        await Promise.all([
+                            bridge.stop(),
+                            healthServer.stop()
+                        ]);
+                        if (typeof logger.close === "function") logger.close();
+                        started = false;
+                    } finally {
+                        stopping = undefined;
+                    }
+                })();
+            }
+            return stopping;
         }
     };
 }
 
+/** Registers process signal handlers that wait for application shutdown. */
 function registerShutdownHandlers(application, processRef = process, logger = console) {
-    const shutdown = signal => {
+    /** Performs one signal-triggered application shutdown. */
+    const shutdown = async signal => {
         logger.log(`${signal} received, closing connections...`);
-        application.stop();
-        processRef.exit(0);
+        try {
+            await application.stop();
+            processRef.exit(0);
+        } catch (error) {
+            logger.error("Failed to shut down cleanly:", error);
+            processRef.exit(1);
+        }
     };
 
     processRef.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -70,6 +92,7 @@ function registerShutdownHandlers(application, processRef = process, logger = co
     return shutdown;
 }
 
+/** Starts the production application and installs its shutdown handlers. */
 function main(options = {}) {
     const application = createApplication(options.applicationOptions);
     application.start();
