@@ -31,6 +31,9 @@ class ChatBridge {
         if (config.mud_ip && config.mud_tls !== true && !isLoopbackHost(config.mud_ip)) {
             throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
         }
+        if (config.mud_auth_token && config.mud_tls !== true) {
+            throw new Error("MUD authentication requires mud_tls to be enabled");
+        }
 
         this.config = config;
         this.discordClient = discordClient;
@@ -68,6 +71,7 @@ class ChatBridge {
             mudClient: false
         };
         this.mudDataBuffer = "";
+        this.discardingMudRecord = false;
         this.mudDecoder = new StringDecoder("utf8");
         this.maxMudRecordBytes = config.mud_max_record_bytes || DEFAULT_MAX_MUD_RECORD_BYTES;
     }
@@ -118,8 +122,9 @@ class ChatBridge {
     handleMudConnected() {
         if (this.stopped) return;
 
-        if (!isLoopbackHost(this.config.mud_ip) && this.mudClient.encrypted !== true) {
-            this.logger.error("Remote MUD connection is not using TLS; closing connection");
+        if ((this.config.mud_tls === true || !isLoopbackHost(this.config.mud_ip))
+            && this.mudClient.encrypted !== true) {
+            this.logger.error("Configured MUD connection is not using TLS; closing connection");
             this.healthServer.setMudConnected(false);
             this.mudClient.destroy();
             return;
@@ -135,10 +140,8 @@ class ChatBridge {
                 name: "bot",
                 message: this.config.mud_auth_token
             };
-            this.writeToMud(authMessage);
+            if (!this.safeWriteToMud(authMessage, "authentication", true)) return;
             this.logger.log("Authentication token sent to MUD");
-        } else if (this.config.mud_auth_token) {
-            this.logger.error("MUD authentication token was not sent because the connection is not using TLS");
         }
 
         if (this.heartbeatInterval !== undefined) {
@@ -151,8 +154,9 @@ class ChatBridge {
                 name: "bot",
                 message: "ping"
             };
-            this.writeToMud(heartbeat);
-            this.logger.log("Heartbeat sent to MUD");
+            if (this.safeWriteToMud(heartbeat, "heartbeat")) {
+                this.logger.log("Heartbeat sent to MUD");
+            }
         }, HEARTBEAT_INTERVAL_MS);
     }
 
@@ -175,9 +179,18 @@ class ChatBridge {
     handleMudData(data) {
         if (this.stopped) return false;
 
-        this.mudDataBuffer += Buffer.isBuffer(data)
+        let decodedData = Buffer.isBuffer(data)
             ? this.mudDecoder.write(data)
             : data.toString();
+        if (this.discardingMudRecord) {
+            const delimiterIndex = decodedData.indexOf("\n");
+            if (delimiterIndex === -1) return false;
+
+            decodedData = decodedData.slice(delimiterIndex + 1);
+            this.discardingMudRecord = false;
+        }
+
+        this.mudDataBuffer += decodedData;
         const records = this.mudDataBuffer.split("\n");
         this.mudDataBuffer = records.pop();
         let relayed = false;
@@ -185,18 +198,16 @@ class ChatBridge {
         for (const record of records) {
             if (record.trim().length === 0) continue;
             if (Buffer.byteLength(record, "utf8") > this.maxMudRecordBytes) {
-                this.logger.error(`MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
-                this.clearMudDataBuffer();
-                this.mudClient.destroy();
-                return relayed;
+                this.logger.error(`MUD record exceeded ${this.maxMudRecordBytes} bytes; discarding record`);
+                continue;
             }
             if (this.relayMudRecord(record)) relayed = true;
         }
 
         if (Buffer.byteLength(this.mudDataBuffer, "utf8") > this.maxMudRecordBytes) {
-            this.logger.error(`Incomplete MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
-            this.clearMudDataBuffer();
-            this.mudClient.destroy();
+            this.logger.error(`Incomplete MUD record exceeded ${this.maxMudRecordBytes} bytes; discarding until next delimiter`);
+            this.mudDataBuffer = "";
+            this.discardingMudRecord = true;
         }
 
         return relayed;
@@ -244,6 +255,7 @@ class ChatBridge {
     /** Clears buffered MUD input so records never span separate connections. */
     clearMudDataBuffer() {
         this.mudDataBuffer = "";
+        this.discardingMudRecord = false;
         this.mudDecoder = new StringDecoder("utf8");
     }
 
@@ -328,11 +340,11 @@ class ChatBridge {
         this.rateLimits.set(channelKey, now);
         this.cleanRateLimits(now);
 
-        this.writeToMud({
+        if (!this.safeWriteToMud({
             name: authorName,
             channel: mappedChannel.mud,
             message: messageText
-        });
+        }, "Discord message")) return false;
         this.healthServer.incrementDiscordToMud();
         return true;
     }
@@ -364,7 +376,25 @@ class ChatBridge {
 
     /** Writes one newline-delimited JSON message to the MUD socket. */
     writeToMud(message) {
+        if (message.channel === "auth" && this.mudClient.encrypted !== true) {
+            throw new Error("Refusing to send MUD authentication without TLS");
+        }
         this.mudClient.write(`${JSON.stringify(message)}\n`);
+    }
+
+    /** Writes to the MUD without allowing transport failures to escape event callbacks. */
+    safeWriteToMud(message, description, destroyOnFailure = false) {
+        try {
+            this.writeToMud(message);
+            return true;
+        } catch (error) {
+            this.logger.error(`Failed to write ${description} to MUD:`, error);
+            this.healthServer.setMudConnected(false);
+            this.clearHeartbeat();
+            if (destroyOnFailure) this.mudClient.destroy();
+            if (this.started && !this.stopped) this.scheduleReconnect();
+            return false;
+        }
     }
 
     /** Cancels the active heartbeat timer, if any. */

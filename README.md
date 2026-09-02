@@ -115,7 +115,6 @@ Copy `config/config.example.json` to `config/config.json` and customize:
   "mud_tls": false,
   "mud_tls_servername": "",
   "mud_max_record_bytes": 1048576,
-  "mud_auth_token": "",
   "mud_retry_count": 5,
   "mud_retry_delay": 30000,
   "rate_limit_per_channel": 10,
@@ -139,8 +138,8 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `mud_port` | MUD server port | Required |
 | `mud_tls` | Use certificate-validated TLS (required unless `mud_ip` is loopback) | false |
 | `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
-| `mud_max_record_bytes` | Maximum incomplete newline-delimited MUD record size | 1048576 |
-| `mud_auth_token` | Optional MUD token; sent only over TLS | "" |
+| `mud_max_record_bytes` | Maximum newline-delimited MUD record size; oversized records are discarded | 1048576 |
+| `MUD_AUTH_TOKEN` | Optional MUD token in `.env`; requires `mud_tls: true` | unset |
 | `mud_retry_count` | Number of reconnection attempts | 5 |
 | `mud_retry_delay` | Delay between reconnection attempts (ms) | 30000 |
 | `rate_limit_per_channel` | Messages per second per channel | 10 |

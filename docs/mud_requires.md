@@ -164,7 +164,8 @@ function onMUDChannelMessage(channel, player, message) {
 
 #### 2. Connection Authentication
 - Optional authentication token/password
-- Send upon connection establishment
+- Require certificate-validated TLS whenever authentication is enabled
+- Send only after the TLS connection is established
 - Reject unauthorized connections
 
 #### 3. Rate Limiting

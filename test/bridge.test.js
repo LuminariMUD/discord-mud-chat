@@ -136,6 +136,7 @@ function createHarness(overrides = {}) {
         mud_name: "TestMUD",
         mud_ip: "127.0.0.1",
         mud_port: 8181,
+        mud_tls: true,
         mud_auth_token: "secret",
         mud_retry_count: 3,
         mud_retry_delay: 250,
@@ -259,6 +260,12 @@ test("direct bridge construction rejects remote plaintext configuration", () => 
     assert.throws(() => createHarness({
         config: { mud_ip: "mud.example.com", mud_tls: false }
     }), /restricted to literal loopback addresses/);
+});
+
+test("direct bridge construction rejects authentication without TLS", () => {
+    assert.throws(() => createHarness({
+        config: { mud_tls: false }
+    }), /authentication requires mud_tls/);
 });
 
 test("remote connections that do not negotiate TLS are closed", () => {
@@ -411,7 +418,7 @@ test("split and coalesced MUD records are relayed without corrupting Unicode", a
     assert.equal(bridge.mudDataBuffer, "");
 });
 
-test("oversized incomplete MUD records close the connection", () => {
+test("oversized incomplete MUD records are discarded without closing the connection", () => {
     const { bridge, errors, mudClient } = createHarness({
         config: { mud_max_record_bytes: 8 }
     });
@@ -421,13 +428,16 @@ test("oversized incomplete MUD records close the connection", () => {
     assert.equal(bridge.mudDataBuffer, "12345678");
 
     assert.equal(bridge.handleMudData(Buffer.from("9")), false);
-    assert.equal(mudClient.destroyed, true);
+    assert.equal(mudClient.destroyed, false);
     assert.equal(bridge.mudDataBuffer, "");
+    assert.equal(bridge.discardingMudRecord, true);
+    assert.equal(bridge.handleMudData(Buffer.from("discarded\n{}\n")), false);
+    assert.equal(bridge.discardingMudRecord, false);
     assert.ok(errors.some(args => String(args[0]).includes("exceeded 8 bytes")));
     assert.equal(DEFAULT_MAX_MUD_RECORD_BYTES, 1024 * 1024);
 });
 
-test("complete MUD records are relayed before an oversized trailing fragment closes the connection", () => {
+test("valid records around an oversized fragment are relayed without closing the connection", async () => {
     const { bridge, discordClient, mudClient } = createHarness({
         config: { mud_max_record_bytes: 128 }
     });
@@ -437,24 +447,37 @@ test("complete MUD records are relayed before an oversized trailing fragment clo
         name: "Ayla",
         message: "Hello"
     });
+    const followingRecord = mudRecord({
+        channel: "gossip",
+        name: "Borin",
+        message: "Still connected"
+    });
 
     assert.equal(bridge.handleMudData(Buffer.concat([
         completeRecord,
         Buffer.alloc(129, "x")
     ])), true);
+    assert.equal(bridge.handleMudData(Buffer.concat([
+        Buffer.from("\n"),
+        followingRecord
+    ])), true);
+    await Promise.resolve();
 
-    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), ["Ayla: Hello"]);
-    assert.equal(mudClient.destroyed, true);
+    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
+        "Ayla: Hello",
+        "Borin: Still connected"
+    ]);
+    assert.equal(mudClient.destroyed, false);
     assert.equal(bridge.mudDataBuffer, "");
 });
 
-test("oversized complete MUD records close the connection without being parsed", () => {
+test("oversized complete MUD records are discarded without closing the connection", () => {
     const { bridge, errors, mudClient } = createHarness({
         config: { mud_max_record_bytes: 8 }
     });
 
-    assert.equal(bridge.handleMudData(Buffer.from("123456789\n")), false);
-    assert.equal(mudClient.destroyed, true);
+    assert.equal(bridge.handleMudData(Buffer.from("123456789\n{}\n")), false);
+    assert.equal(mudClient.destroyed, false);
     assert.ok(errors.some(args => String(args[0]).includes("record exceeded 8 bytes")));
 });
 
@@ -498,6 +521,31 @@ test("non-object MUD records cannot interrupt later valid records", async () => 
         "Ayla: Still running"
     ]);
     assert.equal(healthServer.mudToDiscord, 1);
+});
+
+test("MUD write failures are contained and schedule one reconnect", () => {
+    const { bridge, errors, healthServer, mudClient, timers } = createHarness();
+    mudClient.write = () => {
+        throw new Error("socket unavailable");
+    };
+    bridge.start();
+
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), false);
+    assert.equal(healthServer.discordToMud, 0);
+    assert.deepEqual(healthServer.mudConnected, [false]);
+    assert.equal(timers.timeouts.length, 1);
+    assert.ok(errors.some(args => String(args[0]).includes("Discord message")));
+});
+
+test("writeToMud refuses direct authentication writes without an encrypted transport", () => {
+    const { bridge, mudClient } = createHarness({ mudEncrypted: false });
+
+    assert.throws(() => bridge.writeToMud({
+        channel: "auth",
+        name: "bot",
+        message: "secret"
+    }), /Refusing to send MUD authentication without TLS/);
+    assert.deepEqual(mudClient.writes, []);
 });
 
 test("a clean MUD close clears the heartbeat and schedules reconnection", () => {

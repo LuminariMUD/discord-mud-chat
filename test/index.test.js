@@ -159,6 +159,26 @@ test("createApplication enforces TLS policy before constructing runtime resource
     assert.equal(loggerConstructed, false);
 });
 
+test("createApplication rejects authentication configuration without TLS", () => {
+    let loggerConstructed = false;
+
+    class FakeLogger {
+        constructor() {
+            loggerConstructed = true;
+        }
+    }
+
+    assert.throws(() => createApplication({
+        config: {
+            mud_ip: "127.0.0.1",
+            mud_tls: false,
+            mud_auth_token: "secret"
+        },
+        LoggerClass: FakeLogger
+    }), /authentication requires mud_tls/);
+    assert.equal(loggerConstructed, false);
+});
+
 test("createApplication stop is terminal before start", async () => {
     const calls = [];
     const application = createApplication({

@@ -58,7 +58,8 @@ The bridge must support configurable channel mappings between Discord channels a
 
 ### 5. Authentication (Optional)
 - Support optional token-based authentication with MUD server
-- Send authentication message as first message if token is configured:
+- Require certificate-validated TLS whenever a token is configured
+- Send the authentication message as the first record only after TLS connects:
 ```json
 {
     "channel": "auth",
@@ -70,30 +71,30 @@ The bridge must support configurable channel mappings between Discord channels a
 ## Technical Implementation Requirements
 
 ### 1. Configuration Management
-```javascript
-// config.json or .env structure
+Keep non-secret runtime settings in `config/config.json`:
+
+```json
 {
-    "mud": {
-        "host": "127.0.0.1",
-        "port": 8181,
-        "authToken": "" // Optional
-    },
-    "discord": {
-        "token": "BOT_TOKEN",
-        "guildId": "GUILD_ID",
-        "channels": {
-            "gossip": "CHANNEL_ID_1",
-            "auction": "CHANNEL_ID_2",
-            "gratz": "CHANNEL_ID_3"
-        }
-    },
-    "bridge": {
-        "maxMessageLength": 65535,
-        "rateLimitPerChannel": 10, // messages per second
-        "reconnectAttempts": 5,
-        "reconnectDelay": 30000 // milliseconds
-    }
+    "mud_ip": "127.0.0.1",
+    "mud_port": 8181,
+    "mud_tls": false,
+    "channels": [
+        { "discord": "CHANNEL_ID_1", "mud": "gossip" }
+    ],
+    "largest_printable_string": 65535,
+    "rate_limit_per_channel": 10,
+    "mud_retry_count": 5,
+    "mud_retry_delay": 30000
 }
+```
+
+Keep credentials in a protected `.env` file or secret manager, never in the
+JSON configuration:
+
+```env
+DISCORD_TOKEN=your_discord_bot_token
+# Set only when mud_tls is true:
+# MUD_AUTH_TOKEN=your_mud_auth_token
 ```
 
 ### 2. Message Processing

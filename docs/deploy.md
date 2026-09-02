@@ -120,7 +120,6 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
     "mud_tls": false,
     "mud_tls_servername": "",
     "mud_max_record_bytes": 1048576,
-    "mud_auth_token": "",                  // Optional; sent only over TLS
     "mud_retry_count": 5,
     "mud_retry_delay": 30000,
     "rate_limit_per_channel": 10,          // Messages per second

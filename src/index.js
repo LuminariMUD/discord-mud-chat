@@ -11,6 +11,9 @@ function createApplication(options = {}) {
     if (config.mud_ip && config.mud_tls !== true && !MudClient.isLoopbackHost(config.mud_ip)) {
         throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
     }
+    if (config.mud_auth_token && config.mud_tls !== true) {
+        throw new Error("MUD authentication requires mud_tls to be enabled");
+    }
 
     const LoggerClass = options.LoggerClass || Logger;
     const logger = options.logger || new LoggerClass(options.loggerOptions);
