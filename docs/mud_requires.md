@@ -63,6 +63,11 @@ All communication uses JSON-encoded messages sent over the TCP socket.
 
 ### Data Validation
 
+Both peers must enforce `mud_max_record_bytes` (default 1,048,576 bytes) on the
+UTF-8 bytes in each newline-delimited record. Discard an oversized complete
+record, or discard an oversized incomplete record through its next newline,
+then continue processing later records without closing the connection.
+
 #### Incoming Messages (from Discord)
 - **Maximum message length**: 65,535 characters (configurable)
 - **Empty messages**: Should be ignored
@@ -98,17 +103,30 @@ MUD Channel     | Status  | Description
 #### 1. TCP Socket Server
 ```pseudocode
 function startDiscordBridge() {
+    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
     server = createTCPServer(port: 8181)
     
     server.onConnection = function(socket) {
         log("Discord bridge connected from " + socket.address)
         buffer = ""
+        discardingOversizedRecord = false
 
         socket.onData = function(data) {
-            buffer += decodeUTF8Incrementally(data)
+            decodedData = decodeUTF8Incrementally(data)
+            if (discardingOversizedRecord) {
+                if (decodedData does not contain "\n") return
+                decodedData = contentAfterFirstNewline(decodedData)
+                discardingOversizedRecord = false
+            }
+
+            buffer += decodedData
             while (buffer contains "\n") {
                 record, buffer = splitAtFirstNewline(buffer)
                 if (record is blank) continue
+                if (utf8ByteLength(record) > maxRecordBytes) {
+                    log("Oversized JSON record discarded")
+                    continue
+                }
 
                 try {
                     message = parseJSON(record)
@@ -116,6 +134,12 @@ function startDiscordBridge() {
                 } catch (error) {
                     log("Invalid JSON received: " + error)
                 }
+            }
+
+            if (utf8ByteLength(buffer) > maxRecordBytes) {
+                log("Oversized incomplete JSON record discarded")
+                buffer = ""
+                discardingOversizedRecord = true
             }
         }
         
