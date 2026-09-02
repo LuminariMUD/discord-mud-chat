@@ -212,6 +212,10 @@ class ChatBridge {
             this.logger.error("Failed to parse message from MUD:", error);
             return false;
         }
+        if (messageData === null || Array.isArray(messageData) || typeof messageData !== "object") {
+            this.logger.error("Ignoring MUD record because it is not a JSON object");
+            return false;
+        }
 
         let relayed = false;
         for (const channel of this.config.channels) {

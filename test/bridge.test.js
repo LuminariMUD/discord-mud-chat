@@ -478,6 +478,28 @@ test("invalid, unmapped, and unavailable MUD messages are ignored", () => {
     assert.equal(healthServer.mudToDiscord, 0);
 });
 
+test("non-object MUD records cannot interrupt later valid records", async () => {
+    const { bridge, discordClient, errors, healthServer } = createHarness();
+    discordClient.addChannel("discord-1");
+    const validRecord = mudRecord({
+        channel: "gossip",
+        name: "Ayla",
+        message: "Still running"
+    });
+
+    assert.equal(bridge.handleMudData(Buffer.concat([
+        Buffer.from("null\n[]\n42\n"),
+        validRecord
+    ])), true);
+    await Promise.resolve();
+
+    assert.equal(errors.filter(args => String(args[0]).includes("not a JSON object")).length, 3);
+    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
+        "Ayla: Still running"
+    ]);
+    assert.equal(healthServer.mudToDiscord, 1);
+});
+
 test("a clean MUD close clears the heartbeat and schedules reconnection", () => {
     const { bridge, healthServer, mudClient, timers } = createHarness();
     bridge.start();

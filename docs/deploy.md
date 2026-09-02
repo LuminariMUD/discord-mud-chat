@@ -312,9 +312,12 @@ ufw allow out 8181/tcp               # MUD server
 
 ### 4. Backup Strategy
 
+Keep tokens in `.env` or a secret manager, not `config/config.json`. The commands
+below remove legacy token fields before writing configuration backups.
+
 ```bash
-# Backup configuration
-cp config/config.json config/config.backup.json
+# Backup non-secret configuration
+jq 'del(.discordToken, .mud_auth_token)' config/config.json > config/config.backup.json
 
 # Backup logs (optional)
 tar -czf logs-backup-$(date +%Y%m%d).tar.gz logs/
@@ -323,7 +326,8 @@ tar -czf logs-backup-$(date +%Y%m%d).tar.gz logs/
 #!/bin/bash
 BACKUP_DIR="/backups/mud-discord"
 mkdir -p $BACKUP_DIR
-cp config/config.json $BACKUP_DIR/config-$(date +%Y%m%d).json
+jq 'del(.discordToken, .mud_auth_token)' config/config.json \
+  > $BACKUP_DIR/config-$(date +%Y%m%d).json
 ```
 
 ## Monitoring & Health Checks
@@ -355,6 +359,12 @@ remote access is required.
 ### Monitoring Setup
 
 1. **Simple Monitoring Script**
+
+   Run this script on the Docker host from the Compose project directory. The
+   probe executes inside the application container, where its loopback address
+   reaches the private health endpoint. The outer `timeout` bounds the complete
+   Docker command, while `wget -T` bounds the in-container network operation.
+
    ```bash
    #!/bin/bash
    # health-check.sh
@@ -363,8 +373,8 @@ remote access is required.
      # Send alert (email, webhook, etc.)
    }
 
-   if ! response=$(curl --fail --silent --show-error \
-     --connect-timeout 2 --max-time 5 http://127.0.0.1:3000/health); then
+   if ! response=$(timeout 10s docker compose exec -T mud-discord-chat \
+     wget -T 5 -qO- http://127.0.0.1:3000/health); then
      alert_unhealthy
      exit 1
    fi
@@ -406,10 +416,11 @@ Configure log level via `LOG_LEVEL` environment variable:
    ```json
    {
      "mud_tls": true,
-     "mud_tls_servername": "mud.example.com",
-     "mud_auth_token": "your-secret-token"
+     "mud_tls_servername": "mud.example.com"
    }
    ```
+   Set `MUD_AUTH_TOKEN=your-secret-token` in the protected environment file or
+   secret manager; do not store it in `config/config.json`.
    Connect to a TLS-capable listener or TLS-terminating proxy whose certificate
    is trusted by the host. For a private CA, set `NODE_EXTRA_CA_CERTS` before
    starting Node.js. `mud_tls_servername` is useful when `mud_ip` is an IP
