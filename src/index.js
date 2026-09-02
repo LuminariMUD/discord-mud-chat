@@ -7,9 +7,13 @@ const MudClient = require("./mud-client");
 
 /** Composes the bridge runtime and provides idempotent lifecycle controls. */
 function createApplication(options = {}) {
+    const config = options.config || require(path.join(__dirname, "../config/config"));
+    if (config.mud_ip && config.mud_tls !== true && !MudClient.isLoopbackHost(config.mud_ip)) {
+        throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
+    }
+
     const LoggerClass = options.LoggerClass || Logger;
     const logger = options.logger || new LoggerClass(options.loggerOptions);
-    const config = options.config || require(path.join(__dirname, "../config/config"));
     const HealthServerClass = options.HealthServerClass || HealthServer;
     const healthServer = options.healthServer || new HealthServerClass();
     const DiscordClientClass = options.DiscordClientClass || Client;
@@ -45,6 +49,7 @@ function createApplication(options = {}) {
 
     let started = false;
     let closed = false;
+    let starting;
     let stopping;
     let bridgeStopped = false;
     let healthServerStopped = false;
@@ -56,18 +61,35 @@ function createApplication(options = {}) {
         mudClient,
         bridge,
         /** Starts the health endpoint and message bridge once. */
-        start() {
+        async start() {
             if (started || closed) return;
-            try {
-                healthServer.start();
-                bridge.start();
-                started = true;
-            } catch (error) {
-                application.stop().catch(cleanupError => {
-                    console.error("Failed to clean up after application startup failure:", cleanupError);
-                });
-                throw error;
-            }
+            if (starting) return starting;
+
+            starting = (async () => {
+                try {
+                    await healthServer.start();
+                    if (closed) return;
+                    bridge.start();
+                    started = true;
+                } catch (error) {
+                    try {
+                        await application.stop();
+                    } catch (cleanupError) {
+                        const rollbackFailures = cleanupError instanceof AggregateError
+                            ? cleanupError.errors
+                            : [cleanupError];
+                        throw new AggregateError(
+                            [error, ...rollbackFailures],
+                            "Application startup and rollback failed",
+                            { cause: cleanupError }
+                        );
+                    }
+                    throw error;
+                }
+            })().finally(() => {
+                starting = undefined;
+            });
+            return starting;
         },
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
@@ -133,14 +155,19 @@ function registerShutdownHandlers(application, processRef = process, logger = co
 }
 
 /** Starts the production application and installs its shutdown handlers. */
-function main(options = {}) {
+async function main(options = {}) {
     const application = createApplication(options.applicationOptions);
-    application.start();
+    await application.start();
     registerShutdownHandlers(application, options.processRef, options.logger);
     return application;
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+    main().catch(error => {
+        console.error("Failed to start application:", error);
+        process.exitCode = 1;
+    });
+}
 
 module.exports = {
     createApplication,

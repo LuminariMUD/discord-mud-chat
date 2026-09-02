@@ -1,5 +1,4 @@
 const assert = require("node:assert/strict");
-const { once } = require("node:events");
 const { test } = require("node:test");
 const HealthServer = require("../src/health");
 
@@ -13,9 +12,8 @@ test("health endpoint reports connection state and relay counters", async t => {
     t.mock.method(console, "log", () => {});
 
     const health = new HealthServer(0);
-    const server = health.start();
+    const server = await health.start();
     t.after(() => health.stop());
-    await once(server, "listening");
     const port = server.address().port;
 
     const unhealthyResponse = await fetch(`http://127.0.0.1:${port}/health`);
@@ -51,14 +49,56 @@ test("health server returns 404 and start is idempotent", async t => {
     t.mock.method(console, "log", () => {});
 
     const health = new HealthServer(0);
-    const server = health.start();
-    assert.equal(health.start(), server);
+    const firstStart = health.start();
+    assert.equal(health.start(), firstStart);
+    const server = await firstStart;
+    assert.equal(await health.start(), server);
     t.after(() => health.stop());
-    await once(server, "listening");
 
     const response = await fetch(`http://127.0.0.1:${server.address().port}/missing`);
     assert.equal(response.status, 404);
     assert.equal(await response.text(), "Not Found");
+});
+
+test("health server rejects port conflicts without retaining the failed listener", async t => {
+    const previousHealthPort = process.env.HEALTH_PORT;
+    delete process.env.HEALTH_PORT;
+    t.after(() => {
+        if (previousHealthPort === undefined) delete process.env.HEALTH_PORT;
+        else process.env.HEALTH_PORT = previousHealthPort;
+    });
+    t.mock.method(console, "log", () => {});
+
+    const activeHealth = new HealthServer(0);
+    const activeServer = await activeHealth.start();
+    t.after(() => activeHealth.stop());
+    const conflictingHealth = new HealthServer(activeServer.address().port);
+
+    const failedStart = conflictingHealth.start();
+    const failedStop = conflictingHealth.stop();
+    await assert.rejects(failedStart, { code: "EADDRINUSE" });
+    await failedStop;
+    assert.equal(conflictingHealth.server, undefined);
+});
+
+test("health server coalesces stop while startup is pending", async t => {
+    const previousHealthPort = process.env.HEALTH_PORT;
+    delete process.env.HEALTH_PORT;
+    t.after(() => {
+        if (previousHealthPort === undefined) delete process.env.HEALTH_PORT;
+        else process.env.HEALTH_PORT = previousHealthPort;
+    });
+    t.mock.method(console, "log", () => {});
+
+    const health = new HealthServer(0);
+    const starting = health.start();
+    const firstStop = health.stop();
+    const secondStop = health.stop();
+    const server = await starting;
+    await Promise.all([firstStop, secondStop]);
+
+    assert.equal(server.listening, false);
+    assert.equal(health.server, undefined);
 });
 
 test("HEALTH_PORT overrides the constructor port", () => {

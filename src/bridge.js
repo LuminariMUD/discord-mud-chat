@@ -222,6 +222,7 @@ class ChatBridge {
     handleMudError(error) {
         if (this.stopped) return;
         this.logger.error("Error received from mud", error);
+        if (this.reconnectTimeouts.size > 0) return;
 
         if (this.config.mud_infinite_retries) {
             this.logger.log(`Retry number ${++this.retries}...`);
@@ -319,6 +320,10 @@ class ChatBridge {
 
     /** Schedules one tracked MUD reconnection attempt. */
     scheduleReconnect() {
+        if (this.reconnectTimeouts.size > 0) {
+            return this.reconnectTimeouts.values().next().value;
+        }
+
         let timeout;
         timeout = this.timers.setTimeout(() => {
             this.reconnectTimeouts.delete(timeout);

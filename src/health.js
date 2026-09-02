@@ -6,6 +6,8 @@ class HealthServer {
     constructor(port = 3000) {
         this.port = process.env.HEALTH_PORT || port;
         this.server = undefined;
+        this.starting = undefined;
+        this.stopping = undefined;
         this.stats = {
             uptime: Date.now(),
             mudConnected: false,
@@ -17,11 +19,12 @@ class HealthServer {
         };
     }
 
-    /** Starts the health listener once and returns its HTTP server. */
+    /** Starts the health listener once and resolves after it is listening. */
     start() {
-        if (this.server) return this.server;
+        if (this.starting) return this.starting;
+        if (this.server) return Promise.resolve(this.server);
 
-        this.server = http.createServer((req, res) => {
+        const server = http.createServer((req, res) => {
             if (req.url === "/health" && req.method === "GET") {
                 const status = this.stats.mudConnected && this.stats.discordConnected ? 200 : 503;
                 const health = {
@@ -42,26 +45,75 @@ class HealthServer {
                 res.end("Not Found");
             }
         });
+        this.server = server;
 
-        this.server.listen(this.port, () => {
-            console.log(`Health check endpoint available at http://localhost:${this.port}/health`);
+        const startPromise = new Promise((resolve, reject) => {
+            /** Rejects startup and releases the failed server instance. */
+            const handleError = error => {
+                server.off("listening", handleListening);
+                if (this.server === server) this.server = undefined;
+                reject(error);
+            };
+            /** Resolves startup after the listener has successfully bound. */
+            const handleListening = () => {
+                server.off("error", handleError);
+                console.log(`Health check endpoint available at http://localhost:${this.port}/health`);
+                resolve(server);
+            };
+
+            server.once("error", handleError);
+            server.once("listening", handleListening);
+            try {
+                server.listen(this.port);
+            } catch (error) {
+                handleError(error);
+            }
         });
-
-        return this.server;
+        const trackedStart = startPromise.finally(() => {
+            if (this.starting === trackedStart) this.starting = undefined;
+        });
+        this.starting = trackedStart;
+        return trackedStart;
     }
 
     /** Stops the health listener after active connections drain. */
-    stop() {
-        if (!this.server) return Promise.resolve();
+    async stop() {
+        if (this.stopping) return this.stopping;
 
-        const server = this.server;
-        this.server = undefined;
-        return new Promise((resolve, reject) => {
-            server.close(error => {
-                if (error) reject(error);
-                else resolve();
+        const stopPromise = (async () => {
+            if (this.starting) {
+                try {
+                    await this.starting;
+                } catch {
+                    return;
+                }
+            }
+            if (!this.server) return;
+
+            const server = this.server;
+            this.server = undefined;
+            await new Promise((resolve, reject) => {
+                /** Restores the server reference so a failed close can be retried. */
+                const handleCloseError = error => {
+                    if (!this.server) this.server = server;
+                    reject(error);
+                };
+
+                try {
+                    server.close(error => {
+                        if (error) handleCloseError(error);
+                        else resolve();
+                    });
+                } catch (error) {
+                    handleCloseError(error);
+                }
             });
+        })();
+        const trackedStop = stopPromise.finally(() => {
+            if (this.stopping === trackedStop) this.stopping = undefined;
         });
+        this.stopping = trackedStop;
+        return trackedStop;
     }
 
     /** Records whether the MUD transport is connected. */

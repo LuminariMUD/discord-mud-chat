@@ -74,7 +74,7 @@ The bridge must support configurable channel mappings between Discord channels a
 // config.json or .env structure
 {
     "mud": {
-        "host": "localhost",
+        "host": "127.0.0.1",
         "port": 8181,
         "authToken": "" // Optional
     },

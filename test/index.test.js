@@ -78,8 +78,7 @@ test("createApplication composes, starts, and stops runtime dependencies once", 
     assert.equal(bridgeOptions.healthServer, application.healthServer);
     assert.equal(bridgeOptions.events, events);
 
-    application.start();
-    application.start();
+    await Promise.all([application.start(), application.start()]);
     await application.stop();
     await application.stop();
 
@@ -110,7 +109,7 @@ test("createApplication accepts prebuilt dependencies", async () => {
     };
 
     const application = createApplication({ config: {}, ...dependencies });
-    application.start();
+    await application.start();
     await application.stop();
 
     assert.equal(application.logger, dependencies.logger);
@@ -143,6 +142,23 @@ test("createApplication configures the default MUD transport for TLS", () => {
     assert.equal(application.mudClient.servername, "mud.example.com");
 });
 
+test("createApplication enforces TLS policy before constructing runtime resources", () => {
+    let loggerConstructed = false;
+
+    class FakeLogger {
+        constructor() {
+            loggerConstructed = true;
+        }
+    }
+
+    assert.throws(() => createApplication({
+        config: { mud_ip: "mud.example.com", mud_tls: false },
+        LoggerClass: FakeLogger,
+        mudClient: {}
+    }), /restricted to literal loopback addresses/);
+    assert.equal(loggerConstructed, false);
+});
+
 test("createApplication stop is terminal before start", async () => {
     const calls = [];
     const application = createApplication({
@@ -161,7 +177,7 @@ test("createApplication stop is terminal before start", async () => {
     });
 
     await application.stop();
-    application.start();
+    await application.start();
 
     assert.deepEqual(calls, ["bridge:stop", "health:stop", "logger:close"]);
 });
@@ -186,11 +202,10 @@ test("createApplication cleans up resources after partial startup", async () => 
         }
     });
 
-    assert.throws(() => application.start(), {
+    await assert.rejects(application.start(), {
         message: "bridge start failed"
     });
-    await new Promise(resolve => setImmediate(resolve));
-    application.start();
+    await application.start();
 
     assert.deepEqual(calls, [
         "health:start",
@@ -199,6 +214,70 @@ test("createApplication cleans up resources after partial startup", async () => 
         "health:stop",
         "logger:close"
     ]);
+});
+
+test("createApplication rolls back an asynchronous health startup failure", async () => {
+    const calls = [];
+    const startupError = Object.assign(new Error("health port unavailable"), {
+        code: "EADDRINUSE"
+    });
+    const application = createApplication({
+        config: {},
+        logger: { close: () => calls.push("logger:close") },
+        healthServer: {
+            start: () => {
+                calls.push("health:start");
+                return Promise.reject(startupError);
+            },
+            stop: () => calls.push("health:stop")
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start: () => calls.push("bridge:start"),
+            stop: () => calls.push("bridge:stop")
+        }
+    });
+
+    await assert.rejects(application.start(), startupError);
+    await application.start();
+
+    assert.deepEqual(calls, [
+        "health:start",
+        "bridge:stop",
+        "health:stop",
+        "logger:close"
+    ]);
+});
+
+test("createApplication reports both startup and rollback failures", async () => {
+    const startupError = new Error("health start failed");
+    const cleanupError = new Error("bridge stop failed");
+    const application = createApplication({
+        config: {},
+        logger: { close() {} },
+        healthServer: {
+            start: () => Promise.reject(startupError),
+            stop() {}
+        },
+        discordClient: {},
+        mudClient: {},
+        bridge: {
+            start() {},
+            stop: () => {
+                throw cleanupError;
+            }
+        }
+    });
+
+    await assert.rejects(application.start(), error => {
+        assert.equal(error.name, "AggregateError");
+        assert.equal(error.message, "Application startup and rollback failed");
+        assert.equal(error.cause.name, "AggregateError");
+        assert.deepEqual(error.cause.errors, [cleanupError]);
+        assert.deepEqual(error.errors, [startupError, cleanupError]);
+        return true;
+    });
 });
 
 test("createApplication waits for shutdown, coalesces stops, and prevents restart", async () => {
@@ -225,10 +304,10 @@ test("createApplication waits for shutdown, coalesces stops, and prevents restar
         }
     });
 
-    application.start();
+    await application.start();
     const firstStop = application.stop();
     const secondStop = application.stop();
-    application.start();
+    await application.start();
     await Promise.resolve();
 
     assert.deepEqual(calls, [
@@ -242,7 +321,7 @@ test("createApplication waits for shutdown, coalesces stops, and prevents restar
     await Promise.all([firstStop, secondStop]);
     assert.deepEqual(calls.slice(-1), ["logger:close"]);
 
-    application.start();
+    await application.start();
     assert.deepEqual(calls.slice(-1), ["logger:close"]);
 });
 
@@ -268,12 +347,12 @@ test("createApplication completes every shutdown path after a partial failure", 
         }
     });
 
-    application.start();
+    await application.start();
     await assert.rejects(application.stop(), {
         name: "AggregateError",
         message: "Application shutdown failed"
     });
-    application.start();
+    await application.start();
     await application.stop();
     await application.stop();
 
@@ -311,7 +390,7 @@ test("createApplication retries a transient logger cleanup failure", async () =>
         }
     });
 
-    application.start();
+    await application.start();
     await assert.rejects(application.stop(), {
         name: "AggregateError",
         message: "Application shutdown failed"
@@ -391,11 +470,11 @@ test("registerShutdownHandlers reports shutdown failures before exiting", async 
     assert.equal(errors[0][1], shutdownError);
 });
 
-test("main starts an injected application and registers shutdown handlers", () => {
+test("main starts an injected application and registers shutdown handlers", async () => {
     const processRef = new EventEmitter();
     processRef.exit = () => {};
     const calls = [];
-    const application = main({
+    const application = await main({
         applicationOptions: {
             config: {},
             logger: { close: () => calls.push("logger:close") },

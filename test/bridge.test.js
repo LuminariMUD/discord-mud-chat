@@ -473,7 +473,7 @@ test("an error close does not duplicate error-handler reconnection", () => {
     assert.equal(timers.timeouts.length, 0);
 });
 
-test("infinite retry mode always schedules another connection", () => {
+test("infinite retry mode coalesces overlapping reconnect attempts", () => {
     const { bridge, errors, timers } = createHarness({
         config: { mud_infinite_retries: true }
     });
@@ -481,9 +481,24 @@ test("infinite retry mode always schedules another connection", () => {
     bridge.handleMudError(new Error("offline"));
     bridge.handleMudError(new Error("still offline"));
 
+    assert.equal(bridge.retries, 1);
+    assert.equal(timers.timeouts.length, 1);
+    assert.equal(errors.length, 2);
+
+    timers.timeouts[0].callback();
+    bridge.handleMudError(new Error("offline again"));
     assert.equal(bridge.retries, 2);
     assert.equal(timers.timeouts.length, 2);
-    assert.equal(errors.length, 2);
+});
+
+test("reconnect scheduling returns the existing pending attempt", () => {
+    const { bridge, timers } = createHarness();
+
+    const firstReconnect = bridge.scheduleReconnect();
+    const secondReconnect = bridge.scheduleReconnect();
+
+    assert.equal(secondReconnect, firstReconnect);
+    assert.equal(timers.timeouts.length, 1);
 });
 
 test("finite retry mode stops and resets at the configured limit", () => {
@@ -493,6 +508,8 @@ test("finite retry mode stops and resets at the configured limit", () => {
 
     bridge.handleMudError(new Error("offline"));
     bridge.handleMudError(new Error("still offline"));
+    timers.timeouts[0].callback();
+    bridge.handleMudError(new Error("offline after retry"));
 
     assert.equal(timers.timeouts.length, 1);
     assert.equal(bridge.retries, 0);
