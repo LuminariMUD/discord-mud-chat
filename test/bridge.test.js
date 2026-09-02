@@ -3,6 +3,7 @@ const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
 const {
     ChatBridge,
+    DEFAULT_MAX_MUD_RECORD_BYTES,
     HEARTBEAT_INTERVAL_MS,
     RATE_LIMIT_RETENTION_MS,
     stripEmoji
@@ -375,6 +376,22 @@ test("split and coalesced MUD records are relayed without corrupting Unicode", a
     ]);
     assert.equal(healthServer.mudToDiscord, 2);
     assert.equal(bridge.mudDataBuffer, "");
+});
+
+test("oversized incomplete MUD records close the connection", () => {
+    const { bridge, errors, mudClient } = createHarness({
+        config: { mud_max_record_bytes: 8 }
+    });
+
+    assert.equal(bridge.handleMudData(Buffer.from("12345678")), false);
+    assert.equal(mudClient.destroyed, false);
+    assert.equal(bridge.mudDataBuffer, "12345678");
+
+    assert.equal(bridge.handleMudData(Buffer.from("9")), false);
+    assert.equal(mudClient.destroyed, true);
+    assert.equal(bridge.mudDataBuffer, "");
+    assert.ok(errors.some(args => String(args[0]).includes("exceeded 8 bytes")));
+    assert.equal(DEFAULT_MAX_MUD_RECORD_BYTES, 1024 * 1024);
 });
 
 test("invalid, unmapped, and unavailable MUD messages are ignored", () => {

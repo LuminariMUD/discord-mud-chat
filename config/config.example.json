@@ -4,6 +4,7 @@
     "mud_port": 8181,
     "mud_tls": false,
     "mud_tls_servername": "",
+    "mud_max_record_bytes": 1048576,
     "mud_auth_token": "",
     "mud_retry_count": 50,
     "mud_retry_delay": 30000,

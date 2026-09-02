@@ -3,6 +3,7 @@ const { StringDecoder } = require("node:string_decoder");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
+const DEFAULT_MAX_MUD_RECORD_BYTES = 1024 * 1024;
 
 /** Removes Discord custom emoji and Unicode emoji from a string. */
 function stripEmoji(value, emojiRegexFactory = emojiRegexText) {
@@ -44,6 +45,7 @@ class ChatBridge {
         this.stopped = false;
         this.mudDataBuffer = "";
         this.mudDecoder = new StringDecoder("utf8");
+        this.maxMudRecordBytes = config.mud_max_record_bytes || DEFAULT_MAX_MUD_RECORD_BYTES;
     }
 
     /** Starts the Discord login, event listeners, and MUD connection. */
@@ -130,6 +132,12 @@ class ChatBridge {
             : data.toString();
         const records = this.mudDataBuffer.split("\n");
         this.mudDataBuffer = records.pop();
+        if (Buffer.byteLength(this.mudDataBuffer, "utf8") > this.maxMudRecordBytes) {
+            this.logger.error(`Incomplete MUD record exceeded ${this.maxMudRecordBytes} bytes; closing connection`);
+            this.clearMudDataBuffer();
+            this.mudClient.destroy();
+            return false;
+        }
         let relayed = false;
 
         for (const record of records) {
@@ -315,6 +323,7 @@ class ChatBridge {
 
 module.exports = {
     ChatBridge,
+    DEFAULT_MAX_MUD_RECORD_BYTES,
     HEARTBEAT_INTERVAL_MS,
     RATE_LIMIT_RETENTION_MS,
     stripEmoji

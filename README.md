@@ -114,6 +114,7 @@ Copy `config/config.example.json` to `config/config.json` and customize:
   "mud_port": 8181,
   "mud_tls": false,
   "mud_tls_servername": "",
+  "mud_max_record_bytes": 1048576,
   "mud_auth_token": "",
   "mud_retry_count": 5,
   "mud_retry_delay": 30000,
@@ -138,6 +139,7 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `mud_port` | MUD server port | Required |
 | `mud_tls` | Connect to the MUD through certificate-validated TLS | false |
 | `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
+| `mud_max_record_bytes` | Maximum incomplete newline-delimited MUD record size | 1048576 |
 | `mud_auth_token` | Optional MUD token; sent only over TLS | "" |
 | `mud_retry_count` | Number of reconnection attempts | 5 |
 | `mud_retry_delay` | Delay between reconnection attempts (ms) | 30000 |
