@@ -683,7 +683,7 @@ test("rate-limit cleanup removes stale entries once the map grows", () => {
     assert.deepEqual([...bridge.rateLimits], [["recent", now]]);
 });
 
-test("stop cancels timers and destroys both clients", () => {
+test("stop cancels timers and destroys both clients", async () => {
     const { bridge, discordClient, healthServer, mudClient, timers } = createHarness({
         config: { mud_infinite_retries: true }
     });
@@ -691,7 +691,7 @@ test("stop cancels timers and destroys both clients", () => {
     mudClient.completeConnection();
     bridge.handleMudError(new Error("offline"));
 
-    bridge.stop();
+    await bridge.stop();
     timers.timeouts[0].callback();
 
     assert.equal(discordClient.destroyed, true);
@@ -703,10 +703,10 @@ test("stop cancels timers and destroys both clients", () => {
     assert.equal(mudClient.connectCalls.length, 1);
 });
 
-test("late connection callbacks and errors cannot restart a stopped bridge", () => {
+test("late connection callbacks and errors cannot restart a stopped bridge", async () => {
     const { bridge, discordClient, healthServer, mudClient, timers } = createHarness();
     bridge.start();
-    bridge.stop();
+    await bridge.stop();
 
     mudClient.completeConnection();
     bridge.handleMudError(new Error("late error"));
@@ -720,4 +720,29 @@ test("late connection callbacks and errors cannot restart a stopped bridge", () 
     assert.deepEqual(timers.timeouts, []);
     assert.equal(mudClient.listenerCount("data"), 0);
     assert.equal(discordClient.listenerCount("messageCreate"), 0);
+});
+
+test("stop retries failed cleanup without repeating successful transport closes", async () => {
+    const { bridge, discordClient, mudClient } = createHarness();
+    let discordDestroyAttempts = 0;
+    let mudDestroyAttempts = 0;
+    discordClient.destroy = () => {
+        discordDestroyAttempts++;
+        if (discordDestroyAttempts === 1) throw new Error("Discord close failed");
+    };
+    mudClient.destroy = () => {
+        mudDestroyAttempts++;
+        mudClient.destroyed = true;
+    };
+
+    await assert.rejects(bridge.stop(), {
+        name: "AggregateError",
+        message: "Bridge shutdown failed"
+    });
+    assert.equal(mudClient.destroyed, true);
+    await bridge.stop();
+    await bridge.stop();
+
+    assert.equal(discordDestroyAttempts, 2);
+    assert.equal(mudDestroyAttempts, 1);
 });

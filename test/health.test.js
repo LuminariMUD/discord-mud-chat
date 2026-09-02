@@ -14,6 +14,7 @@ test("health endpoint reports connection state and relay counters", async t => {
     const health = new HealthServer(0);
     const server = await health.start();
     t.after(() => health.stop());
+    assert.equal(server.address().address, "127.0.0.1");
     const port = server.address().port;
 
     const unhealthyResponse = await fetch(`http://127.0.0.1:${port}/health`);

@@ -5,6 +5,7 @@ class HealthServer {
     /** Creates a health server on the environment or caller-provided port. */
     constructor(port = 3000) {
         this.port = process.env.HEALTH_PORT || port;
+        this.host = "127.0.0.1";
         this.server = undefined;
         this.starting = undefined;
         this.stopping = undefined;
@@ -57,14 +58,14 @@ class HealthServer {
             /** Resolves startup after the listener has successfully bound. */
             const handleListening = () => {
                 server.off("error", handleError);
-                console.log(`Health check endpoint available at http://localhost:${this.port}/health`);
+                console.log(`Health check endpoint available at http://${this.host}:${this.port}/health`);
                 resolve(server);
             };
 
             server.once("error", handleError);
             server.once("listening", handleListening);
             try {
-                server.listen(this.port);
+                server.listen(this.port, this.host);
             } catch (error) {
                 handleError(error);
             }

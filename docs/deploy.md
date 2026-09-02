@@ -94,7 +94,7 @@ See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-ste
    - Send a test message in a configured Discord channel
    - Check if message appears in MUD
    - Send message from MUD to verify it appears in Discord
-   - Visit health endpoint: `http://localhost:3000/health`
+   - Visit health endpoint locally: `http://127.0.0.1:3000/health`
 
 ### Configuration Details
 
@@ -160,7 +160,7 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
    ```bash
    docker compose ps                      # Check container status
    docker compose logs -f                 # View logs
-   curl http://localhost:3000/health      # Check health endpoint
+   docker compose exec mud-discord-chat wget -qO- http://127.0.0.1:3000/health
    ```
 
 ### Docker Commands Reference
@@ -202,7 +202,7 @@ services:
     
     # Custom health check
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -306,7 +306,6 @@ export MUD_AUTH_TOKEN="your_auth"
 
 ```bash
 # Firewall rules (example with ufw)
-ufw allow from any to any port 3000  # Health check
 ufw allow out 443/tcp                # Discord API
 ufw allow out 8181/tcp               # MUD server
 ```
@@ -331,7 +330,11 @@ cp config/config.json $BACKUP_DIR/config-$(date +%Y%m%d).json
 
 ### Health Endpoint
 
-The application provides a health endpoint at `http://localhost:3000/health`:
+The application provides a loopback-only health endpoint at
+`http://127.0.0.1:3000/health`. It is not published by the recommended Docker
+Compose configuration because the response contains unauthenticated operational
+telemetry. Use an authenticated reverse proxy or a colocated monitoring agent if
+remote access is required.
 
 ```json
 {
@@ -355,7 +358,7 @@ The application provides a health endpoint at `http://localhost:3000/health`:
    ```bash
    #!/bin/bash
    # health-check.sh
-   response=$(curl -s http://localhost:3000/health)
+   response=$(curl -s http://127.0.0.1:3000/health)
    if [[ $(echo $response | jq -r '.status') != "healthy" ]]; then
      echo "Alert: Service unhealthy"
      # Send alert (email, webhook, etc.)
@@ -363,9 +366,9 @@ The application provides a health endpoint at `http://localhost:3000/health`:
    ```
 
 2. **Integration with Monitoring Services**
-   - **Uptime Kuma**: Add HTTP monitor for health endpoint
-   - **Prometheus**: Scrape metrics from health endpoint
-   - **Grafana**: Visualize health metrics
+   - Run the monitoring agent on the same host or container network namespace
+   - For remote monitoring, put authentication and TLS in front of the endpoint
+   - Do not publish the unauthenticated endpoint directly to an untrusted network
 
 ### Logging
 

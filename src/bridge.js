@@ -50,6 +50,17 @@ class ChatBridge {
             discordMessage: message => this.handleDiscordMessage(message)
         };
         this.stopped = false;
+        this.stopping = undefined;
+        this.shutdownState = {
+            events: false,
+            heartbeat: false,
+            input: false,
+            reconnects: false,
+            mudHealth: false,
+            discordHealth: false,
+            discordClient: false,
+            mudClient: false
+        };
         this.mudDataBuffer = "";
         this.mudDecoder = new StringDecoder("utf8");
         this.maxMudRecordBytes = config.mud_max_record_bytes || DEFAULT_MAX_MUD_RECORD_BYTES;
@@ -57,7 +68,7 @@ class ChatBridge {
 
     /** Starts the Discord login, event listeners, and MUD connection. */
     start() {
-        this.stopped = false;
+        if (this.stopped) return;
         this.bindEvents();
         this.discordClient.login(this.config.discordToken).catch(error => {
             this.logger.error("Failed to log in to Discord:", error);
@@ -346,24 +357,46 @@ class ChatBridge {
         this.heartbeatInterval = undefined;
     }
 
-    /** Cancels scheduled work and closes both transport clients. */
-    stop() {
-        if (this.stopped) return;
-
+    /** Cancels scheduled work and closes both transport clients, retrying failed steps. */
+    async stop() {
+        if (this.stopping) return this.stopping;
         this.stopped = true;
-        this.unbindEvents();
-        this.clearHeartbeat();
-        this.clearMudDataBuffer();
+        const operations = {
+            events: () => this.unbindEvents(),
+            heartbeat: () => this.clearHeartbeat(),
+            input: () => this.clearMudDataBuffer(),
+            reconnects: () => {
+                for (const timeout of this.reconnectTimeouts) {
+                    this.timers.clearTimeout(timeout);
+                }
+                this.reconnectTimeouts.clear();
+            },
+            mudHealth: () => this.healthServer.setMudConnected(false),
+            discordHealth: () => this.healthServer.setDiscordConnected(false),
+            discordClient: () => this.discordClient.destroy(),
+            mudClient: () => this.mudClient.destroy()
+        };
+        const pendingOperations = Object.entries(operations)
+            .filter(([name]) => !this.shutdownState[name])
+            .map(([name, operation]) => Promise.resolve()
+                .then(operation)
+                .then(() => {
+                    this.shutdownState[name] = true;
+                }));
 
-        for (const timeout of this.reconnectTimeouts) {
-            this.timers.clearTimeout(timeout);
-        }
-        this.reconnectTimeouts.clear();
-
-        this.healthServer.setMudConnected(false);
-        this.healthServer.setDiscordConnected(false);
-        this.discordClient.destroy();
-        this.mudClient.destroy();
+        this.stopping = Promise.allSettled(pendingOperations)
+            .then(results => {
+                const failures = results
+                    .filter(result => result.status === "rejected")
+                    .map(result => result.reason);
+                if (failures.length > 0) {
+                    throw new AggregateError(failures, "Bridge shutdown failed");
+                }
+            })
+            .finally(() => {
+                this.stopping = undefined;
+            });
+        return this.stopping;
     }
 }
 

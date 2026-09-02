@@ -276,7 +276,10 @@ Log levels can be configured via `LOG_LEVEL` environment variable (error, warn, 
 
 ### Health Check Endpoint
 
-Monitor application health at `http://localhost:3000/health`:
+Monitor application health locally at `http://127.0.0.1:3000/health`. The
+endpoint is intentionally bound to loopback because it exposes operational
+telemetry without authentication. Docker uses the endpoint only from inside the
+container; expose it externally only through an authenticated monitoring proxy.
 
 ```json
 {
