@@ -193,6 +193,7 @@ void init_discord_bridge(void) {
     discord_bridge->messages_sent = 0;
     discord_bridge->messages_received = 0;
     discord_bridge->messages_dropped = 0;
+    discord_bridge->oversized_records_dropped = 0;
     discord_bridge->max_record_bytes = DISCORD_MAX_RECORD_BYTES;
     discord_bridge->num_channels = 0;
     discord_bridge->authenticated = 0;
@@ -440,7 +441,7 @@ void send_to_discord(const char *channel, const char *name, const char *message,
     /* Enforce the peer's configured UTF-8 record limit before buffering. */
     if ((size_t)json_len > discord_bridge->max_record_bytes) {
         log("SYSERR: Discord bridge record too large, dropping message");
-        discord_bridge->messages_dropped++;
+        discord_bridge->oversized_records_dropped++;
         return;
     }
 
@@ -732,6 +733,7 @@ void discord_bridge_status(struct char_data *ch) {
     send_to_char(ch, "Messages Sent: %d\r\n", discord_bridge->messages_sent);
     send_to_char(ch, "Messages Received: %d\r\n", discord_bridge->messages_received);
     send_to_char(ch, "Messages Dropped (Rate Limit): %d\r\n", discord_bridge->messages_dropped);
+    send_to_char(ch, "Records Dropped (Oversized): %d\r\n", discord_bridge->oversized_records_dropped);
     if (discord_bridge->client_socket != INVALID_SOCKET) {
         time_t now = time(NULL);
         send_to_char(ch, "Connection Time: %ld seconds\r\n", now - discord_bridge->connection_time);

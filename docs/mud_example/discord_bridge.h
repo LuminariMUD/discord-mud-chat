@@ -64,6 +64,7 @@ struct discord_bridge_data {
     int messages_sent;        /* Statistics: messages sent to Discord */
     int messages_received;    /* Statistics: messages received from Discord */
     int messages_dropped;     /* Statistics: messages dropped due to rate limiting */
+    int oversized_records_dropped; /* Statistics: records dropped by the byte limit */
     size_t max_record_bytes;  /* Configured UTF-8 JSON record limit */
     char auth_token[DISCORD_AUTH_TOKEN_SIZE]; /* Authentication token */
     int authenticated;        /* Is connection authenticated? */
