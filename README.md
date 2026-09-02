@@ -154,7 +154,9 @@ cleartext traffic. For every remote MUD, set `mud_tls` to `true` and connect to 
 TLS-capable listener or TLS-terminating proxy. Publicly trusted certificates use
 the system trust store; private certificate authorities can be supplied to
 Node.js with `NODE_EXTRA_CA_CERTS`. Authentication tokens are sent only after a
-certificate-validated TLS connection is established.
+certificate-validated TLS connection is established. `MUD_AUTH_TOKEN` is loaded
+only from the environment; legacy `mud_auth_token` values in `config.json` are
+ignored and should be removed.
 
 ## Message Format
 

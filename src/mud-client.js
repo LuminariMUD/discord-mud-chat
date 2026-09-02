@@ -11,6 +11,16 @@ function isLoopbackHost(host) {
     return normalizedHost === "::1" || normalizedHost.startsWith("::ffff:127.");
 }
 
+/** Rejects MUD settings that could expose a remote connection or authentication token. */
+function validateMudTransportConfig(config) {
+    if (config.mud_ip && config.mud_tls !== true && !isLoopbackHost(config.mud_ip)) {
+        throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
+    }
+    if (config.mud_auth_token && config.mud_tls !== true) {
+        throw new Error("MUD authentication requires mud_tls to be enabled");
+    }
+}
+
 /** Provides a reconnectable TCP or certificate-validated TLS MUD transport. */
 class MudClient extends EventEmitter {
     /** Creates a transport with injectable network modules for testing. */
@@ -98,3 +108,4 @@ class MudClient extends EventEmitter {
 
 module.exports = MudClient;
 module.exports.isLoopbackHost = isLoopbackHost;
+module.exports.validateMudTransportConfig = validateMudTransportConfig;

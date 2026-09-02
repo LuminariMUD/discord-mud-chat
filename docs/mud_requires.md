@@ -102,13 +102,20 @@ function startDiscordBridge() {
     
     server.onConnection = function(socket) {
         log("Discord bridge connected from " + socket.address)
-        
+        buffer = ""
+
         socket.onData = function(data) {
-            try {
-                message = parseJSON(data)
-                routeMessageToMUD(message)
-            } catch (error) {
-                log("Invalid JSON received: " + error)
+            buffer += decodeUTF8Incrementally(data)
+            while (buffer contains "\n") {
+                record, buffer = splitAtFirstNewline(buffer)
+                if (record is blank) continue
+
+                try {
+                    message = parseJSON(record)
+                    routeMessageToMUD(message)
+                } catch (error) {
+                    log("Invalid JSON received: " + error)
+                }
             }
         }
         

@@ -8,12 +8,7 @@ const MudClient = require("./mud-client");
 /** Composes the bridge runtime and provides idempotent lifecycle controls. */
 function createApplication(options = {}) {
     const config = options.config || require(path.join(__dirname, "../config/config"));
-    if (config.mud_ip && config.mud_tls !== true && !MudClient.isLoopbackHost(config.mud_ip)) {
-        throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
-    }
-    if (config.mud_auth_token && config.mud_tls !== true) {
-        throw new Error("MUD authentication requires mud_tls to be enabled");
-    }
+    MudClient.validateMudTransportConfig(config);
 
     const LoggerClass = options.LoggerClass || Logger;
     const logger = options.logger || new LoggerClass(options.loggerOptions);

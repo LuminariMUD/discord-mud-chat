@@ -36,7 +36,7 @@ test("loadConfig reads JSON and applies environment token overrides", () => {
     });
 });
 
-test("loadConfig falls back to file tokens", () => {
+test("loadConfig falls back only to the file Discord token", () => {
     const config = loadConfig({
         configPath: "config.json",
         env: {},
@@ -47,7 +47,7 @@ test("loadConfig falls back to file tokens", () => {
     });
 
     assert.equal(config.discordToken, "discord-from-file");
-    assert.equal(config.mud_auth_token, "mud-from-file");
+    assert.equal(config.mud_auth_token, "");
 });
 
 test("loadConfig defaults missing tokens to empty strings", () => {

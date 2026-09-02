@@ -110,6 +110,10 @@ HEALTH_PORT=3000                        # Health check endpoint port
 LOG_LEVEL=info                          # Logging level (error, warn, info, debug)
 ```
 
+`MUD_AUTH_TOKEN` is environment-only. If an older installation stored
+`mud_auth_token` in `config/config.json`, move it to the protected `.env` file
+and delete the JSON field; the loader intentionally ignores that legacy field.
+
 #### Configuration File (config/config.json)
 
 ```json

@@ -97,6 +97,9 @@ DISCORD_TOKEN=your_discord_bot_token
 # MUD_AUTH_TOKEN=your_mud_auth_token
 ```
 
+The loader must ignore legacy `mud_auth_token` values in `config.json`; the
+environment or injected secret-manager environment is the only supported source.
+
 ### 2. Message Processing
 
 #### Discord to MUD Flow:

@@ -1,6 +1,6 @@
 const emojiRegexText = require("emoji-regex");
 const { StringDecoder } = require("node:string_decoder");
-const { isLoopbackHost } = require("./mud-client");
+const { isLoopbackHost, validateMudTransportConfig } = require("./mud-client");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
@@ -28,12 +28,7 @@ class ChatBridge {
         now = Date.now,
         emojiRegexFactory = emojiRegexText
     }) {
-        if (config.mud_ip && config.mud_tls !== true && !isLoopbackHost(config.mud_ip)) {
-            throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
-        }
-        if (config.mud_auth_token && config.mud_tls !== true) {
-            throw new Error("MUD authentication requires mud_tls to be enabled");
-        }
+        validateMudTransportConfig(config);
 
         this.config = config;
         this.discordClient = discordClient;
