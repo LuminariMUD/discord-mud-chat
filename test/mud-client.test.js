@@ -96,12 +96,12 @@ test("MudClient restricts plaintext connections to loopback hosts", () => {
     const client = new MudClient({ netModule });
 
     assert.throws(
-        () => client.connect(8181, "mud.example.com", () => {}),
+        () => client.connect(8181, "mud.localhost", () => {}),
         /restricted to loopback hosts/
     );
     assert.equal(netModule.calls.length, 0);
-    assert.equal(isLoopbackHost("localhost"), true);
-    assert.equal(isLoopbackHost("mud.localhost."), true);
+    assert.equal(isLoopbackHost("localhost"), false);
+    assert.equal(isLoopbackHost("mud.localhost"), false);
     assert.equal(isLoopbackHost("127.42.0.1"), true);
     assert.equal(isLoopbackHost("::1"), true);
     assert.equal(isLoopbackHost("192.0.2.10"), false);

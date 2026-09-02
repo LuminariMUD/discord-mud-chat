@@ -8,7 +8,7 @@ This document specifies the requirements for the Node.js Discord bridge applicat
 ### 1. Network Connection
 - **Protocol**: TCP client connecting to MUD server
 - **Port**: 8181 (configurable)
-- **Connection Type**: Persistent loopback TCP or certificate-validated TLS connection with automatic reconnection; remote plaintext connections are rejected
+- **Connection Type**: Persistent literal-loopback TCP or certificate-validated TLS connection with automatic reconnection; hostname and remote plaintext connections are rejected
 - **Reconnection**: Automatic retry with exponential backoff (5 attempts, 30-second delays)
 - **Keep-alive**: Implement connection health monitoring
 
@@ -127,7 +127,7 @@ The bridge must support configurable channel mappings between Discord channels a
 - **Input sanitization**: Remove @everyone, @here mentions
 - **User validation**: Strip invalid characters from usernames
 - **Message validation**: Enforce length limits
-- **Connection security**: Require certificate-validated TLS for remote MUDs, restrict plaintext TCP to loopback, and never send authentication tokens over plaintext
+- **Connection security**: Require certificate-validated TLS for hostnames and remote MUDs, restrict plaintext TCP to literal loopback IPs, and never send authentication tokens over plaintext
 - **Token storage**: Use environment variables for sensitive data
 
 ### 5. Logging Requirements

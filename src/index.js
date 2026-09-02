@@ -49,7 +49,7 @@ function createApplication(options = {}) {
     let bridgeStopped = false;
     let healthServerStopped = false;
     let loggerClosed = typeof logger.close !== "function";
-    return {
+    const application = {
         logger,
         healthServer,
         discordClient,
@@ -58,9 +58,16 @@ function createApplication(options = {}) {
         /** Starts the health endpoint and message bridge once. */
         start() {
             if (started || closed) return;
-            healthServer.start();
-            bridge.start();
-            started = true;
+            try {
+                healthServer.start();
+                bridge.start();
+                started = true;
+            } catch (error) {
+                application.stop().catch(cleanupError => {
+                    console.error("Failed to clean up after application startup failure:", cleanupError);
+                });
+                throw error;
+            }
         },
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
@@ -103,6 +110,7 @@ function createApplication(options = {}) {
             return stopping;
         }
     };
+    return application;
 }
 
 /** Registers process signal handlers that wait for application shutdown. */

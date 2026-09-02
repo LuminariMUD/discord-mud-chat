@@ -149,8 +149,9 @@ Copy `config/config.example.json` to `config/config.json` and customize:
 | `largest_printable_string` | Maximum message length | 65535 |
 | `channels` | Array of channel mappings | Required |
 
-Plaintext TCP is restricted to loopback hosts such as `127.0.0.1` and
-`localhost`. For every remote MUD, set `mud_tls` to `true` and connect to a
+Plaintext TCP is restricted to literal loopback addresses such as `127.0.0.1`
+and `::1`; hostnames (including `localhost`) require TLS so DNS cannot redirect
+cleartext traffic. For every remote MUD, set `mud_tls` to `true` and connect to a
 TLS-capable listener or TLS-terminating proxy. Publicly trusted certificates use
 the system trust store; private certificate authorities can be supplied to
 Node.js with `NODE_EXTRA_CA_CERTS`. Authentication tokens are sent only after a

@@ -182,7 +182,7 @@ function onMUDChannelMessage(channel, player, message) {
 ### Network Security
 1. **Firewall rules**: Only allow connections from authorized Discord bridge IPs
 2. **Connection limits**: Limit to one active Discord bridge connection
-3. **TLS/SSL**: Provide TLS when the Discord bridge connects from a remote host; plaintext transport is accepted only over loopback
+3. **TLS/SSL**: Provide TLS when the Discord bridge uses a hostname or connects from a remote host; plaintext transport is accepted only over literal loopback IPs
 
 ### Content Security
 1. **Input validation**: Validate all incoming JSON fields

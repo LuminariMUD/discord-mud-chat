@@ -6,8 +6,7 @@ const tls = require("node:tls");
 function isLoopbackHost(host) {
     if (typeof host !== "string") return false;
 
-    const normalizedHost = host.toLowerCase().replace(/\.$/, "");
-    if (normalizedHost === "localhost" || normalizedHost.endsWith(".localhost")) return true;
+    const normalizedHost = host.toLowerCase();
     if (net.isIP(normalizedHost) === 4) return normalizedHost.startsWith("127.");
     return normalizedHost === "::1" || normalizedHost.startsWith("::ffff:127.");
 }

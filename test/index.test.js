@@ -189,7 +189,7 @@ test("createApplication cleans up resources after partial startup", async () => 
     assert.throws(() => application.start(), {
         message: "bridge start failed"
     });
-    await application.stop();
+    await new Promise(resolve => setImmediate(resolve));
     application.start();
 
     assert.deepEqual(calls, [

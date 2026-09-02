@@ -402,9 +402,10 @@ Configure log level via `LOG_LEVEL` environment variable:
    ```json
    {"channel": "auth", "name": "bot", "message": "your-secret-token"}
    ```
-   Plaintext TCP is permitted only when `mud_ip` is a loopback host such as
-   `127.0.0.1` or `localhost`. Remote connections require TLS. If a token is
-   configured without TLS, the bridge logs an error and does not transmit it.
+   Plaintext TCP is permitted only when `mud_ip` is a literal loopback address
+   such as `127.0.0.1` or `::1`. Hostnames, including `localhost`, and all remote
+   addresses require TLS. If a token is configured without TLS, the bridge logs
+   an error and does not transmit it.
 
 2. **Discord Security**
    - Bot token stored in environment variable
