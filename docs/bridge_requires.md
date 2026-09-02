@@ -108,7 +108,7 @@ The bridge must support configurable channel mappings between Discord channels a
 7. Handle send errors gracefully
 
 #### MUD to Discord Flow:
-1. Receive JSON from TCP socket
+1. Receive newline-delimited UTF-8 JSON records from the TCP socket
 2. Parse and validate JSON
 3. Map channel to Discord channel ID
 4. Format message for Discord

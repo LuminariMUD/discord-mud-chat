@@ -159,7 +159,9 @@ certificate-validated TLS connection is established.
 
 ## Message Format
 
-The application exchanges JSON messages with the MUD:
+The application exchanges JSON messages with the MUD. Each UTF-8 JSON record
+must end with a newline (`\n`); TCP chunks are not message boundaries, so the
+delimiter is required even when sending one record at a time.
 
 ```json
 {

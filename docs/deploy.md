@@ -71,7 +71,7 @@ See [Setting Up Discord Bot](setting_up_discord_bot.md) for detailed step-by-ste
    
    # Configure MUD connection
    nano config/config.json
-   # Set mud_host to "127.0.0.1" or "localhost"
+   # Set mud_ip to "127.0.0.1" for a local plaintext MUD
    # Set mud_port to your MUD's listener port
    # Configure channel mappings
    ```
@@ -159,7 +159,7 @@ LOG_LEVEL=info                          # Logging level (error, warn, info, debu
 3. **Verify Deployment**
    ```bash
    docker compose ps                      # Check container status
-   docker compose logs -f                 # View logs
+   docker compose logs --tail=100         # View recent logs
    docker compose exec mud-discord-chat wget -qO- http://127.0.0.1:3000/health
    ```
 
@@ -358,10 +358,23 @@ remote access is required.
    ```bash
    #!/bin/bash
    # health-check.sh
-   response=$(curl -s http://127.0.0.1:3000/health)
-   if [[ $(echo $response | jq -r '.status') != "healthy" ]]; then
+   alert_unhealthy() {
      echo "Alert: Service unhealthy"
      # Send alert (email, webhook, etc.)
+   }
+
+   if ! response=$(curl --fail --silent --show-error \
+     --connect-timeout 2 --max-time 5 http://127.0.0.1:3000/health); then
+     alert_unhealthy
+     exit 1
+   fi
+   if ! status=$(printf '%s\n' "$response" | jq -er '.status'); then
+     alert_unhealthy
+     exit 1
+   fi
+   if [[ $status != "healthy" ]]; then
+     alert_unhealthy
+     exit 1
    fi
    ```
 

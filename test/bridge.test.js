@@ -245,6 +245,37 @@ test("start binds events, logs into Discord, and connects to the configured MUD"
     assert.equal(discordClient.listenerCount("messageCreate"), 1);
 });
 
+test("start is idempotent for direct bridge consumers", () => {
+    const { bridge, discordClient, mudClient } = createHarness();
+
+    bridge.start();
+    bridge.start();
+
+    assert.equal(discordClient.loginCalls.length, 1);
+    assert.equal(mudClient.connectCalls.length, 1);
+});
+
+test("direct bridge construction rejects remote plaintext configuration", () => {
+    assert.throws(() => createHarness({
+        config: { mud_ip: "mud.example.com", mud_tls: false }
+    }), /restricted to literal loopback addresses/);
+});
+
+test("remote connections that do not negotiate TLS are closed", () => {
+    const { bridge, errors, healthServer, mudClient } = createHarness({
+        config: { mud_ip: "mud.example.com", mud_tls: true },
+        mudEncrypted: false
+    });
+
+    bridge.start();
+    mudClient.completeConnection();
+
+    assert.equal(mudClient.destroyed, true);
+    assert.deepEqual(healthServer.mudConnected, [false]);
+    assert.ok(errors.some(args => String(args[0]).includes("not using TLS")));
+    assert.equal(bridge.heartbeatInterval, undefined);
+});
+
 test("a MUD connection authenticates, updates health, and starts heartbeats", () => {
     const { bridge, healthServer, logs, mudClient, timers } = createHarness();
 

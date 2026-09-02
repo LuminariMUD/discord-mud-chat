@@ -85,7 +85,7 @@ This guide walks through setting up a Discord bot for the mud-discord-chat appli
    nano config/config.json
    ```
    Set:
-   - `"mud_host": "127.0.0.1"` or `"localhost"`
+   - `"mud_ip": "127.0.0.1"` for a local plaintext MUD, or a remote host with `"mud_tls": true`
    - `"mud_port": YOUR_MUD_LISTENER_PORT`
    - Configure channel mappings as needed
 

@@ -59,7 +59,7 @@ All communication uses JSON-encoded messages sent over the TCP socket.
 2. **Build JSON message** with required fields
 3. **Include player name** from the MUD character/account
 4. **Send as raw JSON string** over the TCP socket
-5. **Include newline delimiter** after each JSON message (recommended)
+5. **Include a newline delimiter** after every JSON message (required; TCP chunks are not message boundaries)
 
 ### Data Validation
 
@@ -151,7 +151,7 @@ function onMUDChannelMessage(channel, player, message) {
         "emoted": isEmote(message) ? 1 : 0
     }
     
-    sendToDiscordBridge(JSON.stringify(discordMessage))
+    sendToDiscordBridge(JSON.stringify(discordMessage) + "\n")
 }
 ```
 

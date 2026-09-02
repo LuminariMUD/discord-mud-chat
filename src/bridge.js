@@ -1,5 +1,6 @@
 const emojiRegexText = require("emoji-regex");
 const { StringDecoder } = require("node:string_decoder");
+const { isLoopbackHost } = require("./mud-client");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
@@ -27,6 +28,10 @@ class ChatBridge {
         now = Date.now,
         emojiRegexFactory = emojiRegexText
     }) {
+        if (config.mud_ip && config.mud_tls !== true && !isLoopbackHost(config.mud_ip)) {
+            throw new Error("Plaintext MUD transport is restricted to literal loopback addresses; enable mud_tls for remote connections");
+        }
+
         this.config = config;
         this.discordClient = discordClient;
         this.mudClient = mudClient;
@@ -49,6 +54,7 @@ class ChatBridge {
             discordReady: client => this.handleDiscordReady(client),
             discordMessage: message => this.handleDiscordMessage(message)
         };
+        this.started = false;
         this.stopped = false;
         this.stopping = undefined;
         this.shutdownState = {
@@ -68,7 +74,8 @@ class ChatBridge {
 
     /** Starts the Discord login, event listeners, and MUD connection. */
     start() {
-        if (this.stopped) return;
+        if (this.started || this.stopped) return;
+        this.started = true;
         this.bindEvents();
         this.discordClient.login(this.config.discordToken).catch(error => {
             this.logger.error("Failed to log in to Discord:", error);
@@ -110,6 +117,13 @@ class ChatBridge {
     /** Authenticates a connected MUD socket and starts its heartbeat. */
     handleMudConnected() {
         if (this.stopped) return;
+
+        if (!isLoopbackHost(this.config.mud_ip) && this.mudClient.encrypted !== true) {
+            this.logger.error("Remote MUD connection is not using TLS; closing connection");
+            this.healthServer.setMudConnected(false);
+            this.mudClient.destroy();
+            return;
+        }
 
         this.retries = 0;
         this.logger.log(`Connected to ${this.config.mud_name} ${this.config.mud_ip}:${this.config.mud_port}`);
