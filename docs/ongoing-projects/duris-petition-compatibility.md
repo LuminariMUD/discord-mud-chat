@@ -45,8 +45,8 @@ request and do not block implementation review.
 - Configuration validation passed through the real JSON loader and transport
   validator; both `.env` files pass Bash syntax checks. The actual health server
   bound to 127.0.0.1:3002, returned the expected disconnected status, and stopped.
-  **Local activation remains pending:** `DISCORD_TOKEN` is empty, and the
-  staff-channel ID remains the explicit placeholder until supplied. The running
+  **Local activation remains pending:** `DISCORD_TOKEN` is empty. The supplied
+  staff-channel ID is configured and the one-way mapping validates. The running
   Duris process uses `ENVIRONMENT=production`; it was not restarted. Restart the
   normal supervisor/wrapper to reload `.env` when rollout is authorized:
   `cycle_mud.sh` reads it once, so in-game copyover or its existing restart loop
