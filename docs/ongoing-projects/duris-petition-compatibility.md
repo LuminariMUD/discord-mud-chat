@@ -1,7 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phases 0-2 verified and open for review; command hooks and
-end-to-end integration remain.
+Status: in progress; Phases 0-3 verified and open for review; end-to-end
+integration, bridge output limits, and sample/deployment work remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -37,7 +37,7 @@ verified as recorded below; unchecked items remain required work.
 - Duris transport is on `codex/duris-discord-endpoint`, based on `master` at
   `7156b32431394a12a5a726d1158e1968dd89b3c7`: implementation commit
   `03c316b4d`, [PR #83](https://github.com/LuminariMUD/Duris/pull/83). Stack the
-  command-hook branch/PR on this branch. Follow its `AGENTS.md`. No local
+  command-hook branch/PR on this branch (now implemented as recorded below). Follow its `AGENTS.md`. No local
   environment, player data, or running service was changed.
 - Baseline bridge: Node 26.11.1; run the required npm with
   `npx --yes --package=npm@12.0.1 npm <command>` (shell npm is 11.20.0).
@@ -68,8 +68,8 @@ verified as recorded below; unchecked items remain required work.
   then flushes in the output phase. Work is capped at 4 accepts, 32 read/write
   attempts and 64 KiB per direction per pulse; output holds at most 256 events
   and 4,194,308 wire bytes. Only auth/heartbeat controls are consumed; chat is
-  discarded. `discord_bridge_publish()` currently expects plain UTF-8 and
-  serializes only `petition`; no command calls it yet.
+  discarded. `discord_bridge_publish()` expects plain UTF-8 and serializes only
+  `petition`; Phase 3 calls it through the native conversion helper.
 - Phase 2 validation: full `make -C src`, formatting, new
   `python3 tests/async/test_discord_bridge_runtime.py`, all five existing
   regressions, and `test_command_latency_runtime.py` pass. The new runner builds
@@ -81,13 +81,31 @@ verified as recorded below; unchecked items remain required work.
   evidence of the complete game lifecycle. Initial strict-build EAGAIN alias
   warnings were fixed; the required formatter also corrected pre-existing drift
   in the touched `comm.c` file.
-- Next: Phase 3 on a new Duris branch based on `codex/duris-discord-endpoint`.
-  Hook accepted `do_petition()`/`do_ptell()` once outside recipient loops,
-  implement bounded plain text conversion/concealment, and execute the real
-  command paths in native tests. Then stack bridge Phase 4 on
-  `codex/duris-one-way-mappings` for strict chat schema, long Discord messages,
-  bounded transport writes, independent interoperability, and cross-repo tests.
-  Samples, guides, isolated game journeys, and final rollout gates remain.
+- Phase 3 is implemented on Duris `codex/duris-petition-exports`, commit
+  `b2de29cbf`, [PR #84](https://github.com/LuminariMUD/Duris/pull/84), stacked
+  on #83. Accepted `do_petition` and `do_ptell` each call
+  `discord_petition_export` once before native delivery and outside recipient
+  loops. It uses `AnsiString`/UTF-8 conversion, removes terminal control
+  sequences, bounds input by native buffers, and preserves plain dollars.
+  Explicit concealment states redact sender/target names; non-trusted reply
+  senders are also `Someone`. See `docs/network/DISCORD_BRIDGE.md` for predicates.
+  Petition and staff ptell help entries now disclose the optional feed.
+- Phase 3 validation: full build and formatting pass. The production-command
+  harness `test_discord_petition_export.py` passes normally and with
+  `SANITIZE=1` (ASan/UBSan). It executes exact command bodies with production
+  character types/parser, synthetic players, boundary delivery/log/visibility
+  stubs, and real conversion/serialization/socket I/O. Accepted/rejected,
+  zero/one/multiple staff, echo on/off, concealment, Unicode/escapes/control
+  stripping, max buffers, overflow, disconnect, and disabled cases pass.
+  The native endpoint suite and the five existing baseline regressions also pass.
+  Additional real output integration (say/tell/guild/reply/act/paging/snoop) and
+  flat-file help catalog/runtime tests pass. A pre-existing missing `<algorithm>`
+  include in the output integration harness was fixed to run that test.
+- Next: bridge Phase 4, stacked on `codex/duris-one-way-mappings`: strict chat
+  fields, ordered Unicode-safe Discord chunking with bounded queues, bounded
+  socket writes, independent TCP/TLS peers and cross-repo tests. Duris Phase 3
+  is available for those tests on `codex/duris-petition-exports`. Full isolated
+  game and copyover journeys, samples/guides, and rollout gates remain.
   No live Discord messages have been sent.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
@@ -201,7 +219,7 @@ the plain text exported to Discord.
 
 The new endpoint is disabled by default. When enabled, its initial plaintext
 listener binds to `127.0.0.1` on configurable port 8181, separate from all player
-ports. This is a proposed listener; it does not currently exist. Accept one
+ports. The Phase 2 implementation provides this listener. Accept one
 active bridge client and reject extra clients without replacing the active one.
 
 Use nonblocking I/O, bounded input/output queues, per-pulse work budgets, and
@@ -287,20 +305,20 @@ Forged incoming chat cannot affect any player or execute any command.
 
 ### Phase 3 - Connect petitions and staff replies
 
-- [ ] Add the two accepted-command hooks in `src/cmd/actcomm.c::do_petition()`
+- [x] Add the two accepted-command hooks in `src/cmd/actcomm.c::do_petition()`
       and `src/cmd/actwiz.c::do_ptell()`. Keep rejection branches and native
       output behavior unchanged.
-- [ ] Implement plain text conversion, reply target labels, concealed-sender
+- [x] Implement plain text conversion, reply target labels, concealed-sender
       redaction, and full-record serialization with bounds derived from actual
       Duris name/text buffers. Do not confuse `MAX_INPUT_LENGTH` with wire-record
       size or silently truncate a JSON record to fit a small fixed buffer.
-- [ ] Test real command paths with NPC/blocked/silenced/disabled/empty petitions,
+- [x] Test real command paths with NPC/blocked/silenced/disabled/empty petitions,
       and missing, self, NPC, invisible/ineligible, or disconnected reply targets.
       Only accepted commands may produce bridge events.
-- [ ] Test zero/one/many online staff, echo on/off, normal/hidden staff senders,
+- [x] Test zero/one/many online staff, echo on/off, normal/hidden staff senders,
       quotes, backslashes, dollars, color markup, Unicode, and an unavailable
       bridge. Each accepted command exports once regardless of recipient count.
-- [ ] Assert other channels, ordinary tells, staff echoes, and `send_to_gods()`
+- [x] Assert other channels, ordinary tells, staff echoes, and `send_to_gods()`
       notifications never enter the petition feed.
 
 Gate: petitions and `ptell` replies reach the fixture client once per accepted
@@ -379,9 +397,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 ## Proposed Duris bridge configuration
 
-This is the target sample after the Duris endpoint exists. The Phase 1 bridge
-now enforces `direction`, but native transport and command hooks remain to be
-implemented; this configuration alone cannot create a Duris listener.
+The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
+exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
+Full Node/native integration and tested deployment instructions remain pending.
 
 ```json
 {
