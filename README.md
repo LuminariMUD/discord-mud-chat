@@ -205,7 +205,7 @@ pm2 start ecosystem.config.js
 ### Available Scripts
 
 - `npm start` - Start the application
-- `npm run dev` - Start with nodemon for development
+- `npm run dev` - Start with Node watch mode (`node --watch`) for development
 - `npm run lint` - Run ESLint to check code quality
 - `npm run lint:fix` - Run ESLint with auto-fix
 

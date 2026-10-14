@@ -39,7 +39,7 @@ Use Node.js 24.18.0 or newer and npm 12.0.1 or newer. The repository's
 ```bash
 npm ci                     # Install locked dependencies
 npm start                  # Start the application
-npm run dev               # Start with nodemon for development
+npm run dev               # Start with Node watch mode (`node --watch`) for development
 npm run lint              # Run ESLint on all JavaScript
 npm run lint:fix          # Run ESLint with auto-fix
 ```
@@ -61,7 +61,7 @@ pm2 start ecosystem.config.js --env development  # Start in development mode
 - **discord.js v14**: Discord bot framework
 - **dotenv**: Environment variable management
 - **emoji-regex**: Emoji stripping functionality
-- **nodemon**: Development auto-restart (dev dependency)
+- **node --watch**: Built-in development auto-restart (no extra dependency)
 - **ESLint 10**: Code quality linting with flat config (dev dependency)
 
 ## Important Configuration Options
