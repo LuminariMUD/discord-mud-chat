@@ -4,6 +4,7 @@
 #include "net/unicode.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "core/prototypes.h"
 
 #include <cstring>
 #include <string>
@@ -112,5 +113,9 @@ void discord_petition_export(char_data *sender, const char *message, char_data *
 	}
 	if (target)
 		name += " -> " + target_name;
+	// process_line doubles literal dollars before command dispatch. Match the
+	// native output boundary without changing the command's input or recipients.
+	delete_doubledollar(text.data());
+	text.resize(std::strlen(text.c_str()));
 	discord_bridge_publish(name.c_str(), text.c_str());
 }

@@ -35,13 +35,16 @@ npm ci
 npm run lint
 npm run test:coverage
 python3 scripts/test-duris.py --duris /path/to/duris
+python3 scripts/test-duris.py --duris /path/to/duris --full-game
 python3 scripts/check-duris-sample.py --duris /path/to/duris
 ```
 
 The opt-in runners compile under Duris's `bin/tests/`, use synthetic players,
 and send to an in-memory Discord sink. They require no real account/token and
-change no running service. They verify the production command boundary;
-full-game/save/copyover evidence is tracked separately in the
+change no running service. The default runner verifies the production command
+boundary. `--full-game` builds and boots a disposable minimal flat-file world,
+uses real player connections, and exercises saves/reload, failed exec, successful
+copyover and disconnect/disable rollback. Exact evidence is tracked in the
 [implementation handoff](ongoing-projects/duris-petition-compatibility.md).
 
 ## Staff channel and local configuration
@@ -141,8 +144,9 @@ replies continue through these failures.
 
 A successful game copyover closes the bridge sockets on exec, recreates the
 listener, and lets Node reconnect. A failed exec leaves the old listener usable.
-Ordinary shutdown closes it. The project's full-game lifecycle acceptance gate
-must pass in an isolated server before relying on deployment-level copyover.
+Ordinary shutdown closes it. The full-game journey verifies these paths with
+real player sockets and the Node relay in a disposable minimal flat-file world;
+deployment configuration and the real Discord audience still need rollout checks.
 
 To roll back delivery, stop the single Node process. To disable the native
 endpoint as well, unset `DURIS_DISCORD_ENABLED` or set it to `FALSE`, then restart

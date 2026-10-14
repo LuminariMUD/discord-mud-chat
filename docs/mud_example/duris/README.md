@@ -2,7 +2,7 @@
 
 These four `net/discord_*` files are byte-for-byte copies of the production
 Duris modules at tested revision
-`742c38136965245cdb69679cdf1a58d594b074c6`. They use Duris's **C++20** build,
+`6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`. They use Duris's **C++20** build,
 cJSON/crypto libraries, character types and ANSI/Unicode utilities. Do not mix
 these with the generic C89 sample one directory above.
 

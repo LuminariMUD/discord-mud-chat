@@ -47,6 +47,7 @@ functions = [native_paths.extract_function(path, signature) for path, signature 
     ("actcomm.c", "void send_to_gods("), ("interp.c", "void half_chop("),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
     ("comm.c", "void escape_act_dollars("),
+    ("comm.c", "void delete_doubledollar("),
 ]]
 assert functions[0].count("discord_petition_export(") == 1
 assert functions[1].count("discord_petition_export(") == 1

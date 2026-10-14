@@ -78,6 +78,23 @@ output solely to test Node's recovery; it does not replace the native endpoint.
 No game files, accounts, production environment, or Discord API are modified.
 Full isolated game boot/save/copyover journeys are separate acceptance checks.
 
+Run the full-game acceptance journey with:
+
+```sh
+python3 scripts/test-duris.py --duris /path/to/duris --full-game
+```
+
+It requires the native `test_discord_game_journey.py` runner and builds the current
+flat-file server and fixture inspector. Temporary runtime data and binaries stay
+under Duris's `bin/tests/`. Two synthetic accounts log in through real gameplay
+sockets; the actual Node transport/relay sends to an in-memory Discord sink.
+The journey checks native petition/reply feedback and audit, dollar escaping,
+concealment, excluded commands/channels, one-way ingress, saves and reload,
+failed exec, successful copyover on the original player sockets, and
+disconnect/disable rollback. It uses a minimal world and no operator `.env`,
+database, live service or Discord credential. This opt-in journey is outside
+the generic npm suite; command-harness sanitizers remain separate.
+
 ## Integration samples and deployment
 
 ```sh
