@@ -157,5 +157,6 @@ fragmentation, byte limits, recovery, and mapping order.
 The [Duris project](ongoing-projects/duris-petition-compatibility.md) records the
 implemented native endpoint and petition/ptell hooks, with PRs and executable
 verification. Bounded delivery in both directions and independent generic
-TCP/TLS interoperability are implemented. Full Node/native cross-repository
-tests and tested deployment/sample instructions remain separate work.
+TCP/TLS interoperability and Node/native command-boundary integration are
+implemented. Full game/copyover acceptance and tested deployment/sample
+instructions remain separate work.

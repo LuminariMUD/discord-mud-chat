@@ -52,3 +52,26 @@ with an in-memory Discord sink. TLS tests add their temporary CA through the
 transport's existing test injection seam, retaining `rejectUnauthorized: true`
 and real hostname checks. These tests do not establish that an upstream MUD
 codebase or the Duris game is integrated; native checks are separate.
+
+## Duris integration (opt-in)
+
+With a Duris checkout containing the petition endpoint, hooks, and the native
+harness's `--node-driver` option, run:
+
+```sh
+python3 scripts/test-duris.py --duris /path/to/duris
+SANITIZE=1 python3 scripts/test-duris.py --duris /path/to/duris
+```
+
+The path is required; the generic suite never assumes a sibling checkout.
+Duris supplies the C++20 compiler, cJSON/crypto development dependencies, and
+build artifacts under its `bin/tests/` directory. This runner uses real native
+command bodies, conversion, serialization, and sockets with the actual Node
+transport/relay and a fake Discord sink. It first runs the standalone native
+command cases, then checks both event types, concealment, color/Unicode/escapes,
+long posts, mention suppression, scope exclusions, malformed/oversized recovery,
+forged ingress, reconnect, and native operation during disconnect/disable.
+The loopback proxy fragments native output byte by byte and injects invalid
+output solely to test Node's recovery; it does not replace the native endpoint.
+No game files, accounts, production environment, or Discord API are modified.
+Full isolated game boot/save/copyover journeys are separate acceptance checks.

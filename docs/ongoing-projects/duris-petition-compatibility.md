@@ -1,7 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phases 0-3 and bounded Discord delivery verified and open
-for review; full Node/native integration and sample/deployment work remain.
+Status: in progress; Phases 0-4 implemented and verified at the command boundary;
+full game/copyover acceptance and sample/deployment work remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -120,7 +120,9 @@ verified as recorded below; unchecked items remain required work.
   module has 100% coverage across all three metrics. Tests include slow sends,
   event and UTF-8 byte limits, surrogate boundaries, mentions, failure mid-event,
   synchronous send errors, shutdown races, and subsequent-record recovery.
-- Phase 4b is on `codex/bounded-mud-writes`, stacked on Phase 4a. MUD writes
+- Phase 4b is on `codex/bounded-mud-writes`, commit `e997462`,
+  [PR #33](https://github.com/LuminariMUD/discord-mud-chat/pull/33), stacked on
+  Phase 4a. MUD writes
   require an established connection, have a serialized-record limit, and hold
   at most 256 pending writes / 4 MiB including socket-buffered bytes. A false
   socket write is accepted once; subsequent records are rejected until drain.
@@ -137,10 +139,29 @@ verified as recorded below; unchecked items remain required work.
   passes on both CI versions (24.18.0 and 26.8.1), using npm 12.0.1. Aggregate
   coverage is 98.77% lines / 94.80% branches / 94.31% functions. The final TLS
   test additionally checks the exact trust/hostname error codes.
-- Next: publish Phase 4b, then stack full Node/native cross-repository tests.
-  Duris Phase 3 is available on
-  `codex/duris-petition-exports`. Full isolated game/copyover journeys,
-  samples/guides, and rollout gates remain. No live Discord messages were sent.
+- Phase 4c is on `codex/duris-node-integration` in both repositories, stacked
+  on bridge Phase 4b and native Phase 3. Native commit `68c5e7d1b` is
+  [PR #85](https://github.com/LuminariMUD/Duris/pull/85).
+  The native harness adds optional stdio
+  controls for an external Node driver; its ordinary regression mode remains
+  standalone. The bridge's `python3 scripts/test-duris.py --duris /path/to/duris`
+  invokes it with a configurable checkout path. Real commands, conversion,
+  serialization and listener connect to the actual Node transport/relay and
+  an in-memory Discord sink through a fragmentation/fault-injection proxy.
+  Both command labels, concealment, native output/audit counts, color/Unicode,
+  long posts/mentions, rejected/other events, malformed/oversized recovery,
+  reconnect and disconnect/disable rollback pass. Injected Discord posts produce
+  controls only; direct forged chat changes neither dispatch nor native delivery
+  counts, and Discord-to-MUD accepted/drop counters stay zero.
+- Phase 4c verification: full native `make -C src`, changed/whole-file formatting,
+  standalone native command regressions and the cross-repository runner pass.
+  Cross-repository tests also pass with ASan/UBSan and both CI Node versions
+  (24.18.0 and 26.8.1), in addition to 26.11.1. These are
+  production-command harnesses with synthetic players and boundary stubs;
+  they do not establish full game boot/save/copyover behavior.
+- Next: publish Phase 4c, then complete full isolated game/copyover journeys and
+  the required native/generic samples and deployment guides. No live Discord
+  messages were sent; permission/audience checks remain a later rollout gate.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
@@ -372,7 +393,7 @@ channel. Existing privacy/output regressions continue passing.
 - [x] Exercise `MudClient`/`ChatBridge` write backpressure and disconnects;
       contain any required fixes to generic transport behavior. Keep control
       writes distinct from prohibited Discord chat writes in one-way mode.
-- [ ] Test the real Duris endpoint with the actual Node transport and a fake
+- [x] Test the real Duris endpoint with the actual Node transport and a fake
       Discord client. Include the two command exports, Unicode fragmentation,
       malformed/oversized records followed by valid ones, reconnect, and an
       injected Discord post that produces no game chat.
@@ -433,7 +454,8 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
 exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
-Full Node/native integration and tested deployment instructions remain pending.
+Node/native command-boundary integration is verified; tested deployment
+instructions and full isolated-game acceptance remain pending.
 
 ```json
 {
