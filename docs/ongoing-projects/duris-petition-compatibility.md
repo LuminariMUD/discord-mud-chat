@@ -1,7 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phases 0-3 verified and open for review; end-to-end
-integration, MUD write limits, and sample/deployment work remain.
+Status: in progress; Phases 0-3 and bounded Discord delivery verified and open
+for review; full Node/native integration and sample/deployment work remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -102,7 +102,9 @@ verified as recorded below; unchecked items remain required work.
   flat-file help catalog/runtime tests pass. A pre-existing missing `<algorithm>`
   include in the output integration harness was fixed to run that test.
 - Phase 4a is on bridge `codex/bounded-discord-delivery`, based on
-  `codex/duris-one-way-mappings`. It validates chat strings/optional numeric
+  `codex/duris-one-way-mappings`, commit `4678c70`,
+  [PR #32](https://github.com/LuminariMUD/discord-mud-chat/pull/32).
+  It validates chat strings/optional numeric
   emotes, splits formatted content into <=2000 UTF-16 units at code-point
   boundaries, and serializes delivery per Discord destination. Queues hold at
   most 256 delivery events / 4 MiB of UTF-8 content globally, including active
@@ -118,8 +120,25 @@ verified as recorded below; unchecked items remain required work.
   module has 100% coverage across all three metrics. Tests include slow sends,
   event and UTF-8 byte limits, surrogate boundaries, mentions, failure mid-event,
   synchronous send errors, shutdown races, and subsequent-record recovery.
-- Next: publish Phase 4a, then stack bounded MUD socket writes and independent
-  TCP/TLS/cross-repository tests. Duris Phase 3 is available on
+- Phase 4b is on `codex/bounded-mud-writes`, stacked on Phase 4a. MUD writes
+  require an established connection, have a serialized-record limit, and hold
+  at most 256 pending writes / 4 MiB including socket-buffered bytes. A false
+  socket write is accepted once; subsequent records are rejected until drain.
+  Pending callbacks settle once across close/replacement/shutdown, without
+  replay or stale connection state changes. Health adds rejected/interrupted
+  chat writes separately from accepted writes; controls are excluded.
+- Phase 4b verification: the focused five-test independent network suite passes
+  on Node 26.11.1. A separate generic fixture server exchanges the old format
+  over real TCP and validated TLS, tests auth first, default bidirectionality,
+  one-way exclusion, bytewise UTF-8 fragmentation, malformed/oversized recovery,
+  reconnect and paused-reader backpressure. Fresh temporary test certificates
+  prove trust/hostname rejection before auth. No Duris files or credentials are
+  required. Lint and all 111 tests pass on Node 26.11.1. The coverage suite also
+  passes on both CI versions (24.18.0 and 26.8.1), using npm 12.0.1. Aggregate
+  coverage is 98.77% lines / 94.80% branches / 94.31% functions. The final TLS
+  test additionally checks the exact trust/hostname error codes.
+- Next: publish Phase 4b, then stack full Node/native cross-repository tests.
+  Duris Phase 3 is available on
   `codex/duris-petition-exports`. Full isolated game/copyover journeys,
   samples/guides, and rollout gates remain. No live Discord messages were sent.
 - Git policy for this project: commit and push each verified chunk, open focused
@@ -350,14 +369,14 @@ channel. Existing privacy/output regressions continue passing.
       messages in order at safe Unicode boundaries with bounded queueing and
       `allowedMentions: { parse: [] }` on every part. The limit is documented in
       the [Discord Create Message API](https://docs.discord.com/developers/resources/message#create-message).
-- [ ] Exercise `MudClient`/`ChatBridge` write backpressure and disconnects;
+- [x] Exercise `MudClient`/`ChatBridge` write backpressure and disconnects;
       contain any required fixes to generic transport behavior. Keep control
       writes distinct from prohibited Discord chat writes in one-way mode.
 - [ ] Test the real Duris endpoint with the actual Node transport and a fake
       Discord client. Include the two command exports, Unicode fragmentation,
       malformed/oversized records followed by valid ones, reconnect, and an
       injected Discord post that produces no game chat.
-- [ ] Define health/counter meanings accurately: socket connectivity is not
+- [x] Define health/counter meanings accurately: socket connectivity is not
       proof of authentication or delivery; one split event may create multiple
       Discord posts. Count only successful sends using the existing counter
       semantics, and report drops without logging petition bodies or tokens.

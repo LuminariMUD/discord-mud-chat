@@ -18,7 +18,8 @@ class HealthServer {
                 discordToMud: 0
             },
             messagesDropped: {
-                mudToDiscord: 0
+                mudToDiscord: 0,
+                discordToMud: 0
             }
         };
     }
@@ -139,6 +140,11 @@ class HealthServer {
     /** Counts incomplete delivery events per mapped Discord destination, not parts. */
     incrementMudToDiscordDropped() {
         this.stats.messagesDropped.mudToDiscord++;
+    }
+
+    /** Counts rejected or interrupted chat writes, excluding auth/heartbeat controls. */
+    incrementDiscordToMudDropped() {
+        this.stats.messagesDropped.discordToMud++;
     }
 
     /** Records a Discord-to-MUD message. */

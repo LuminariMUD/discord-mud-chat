@@ -261,9 +261,9 @@ class ChatBridge {
     }
 
     /** Applies the configured retry policy after a MUD socket error. */
-    handleMudError(error) {
+    handleMudError() {
         if (this.stopped) return;
-        this.logger.error("Error received from mud", error);
+        this.logger.error("Error received from MUD; connection will follow the retry policy");
         if (this.reconnectTimeouts.size > 0) return;
 
         if (this.config.mud_infinite_retries) {
@@ -381,7 +381,16 @@ class ChatBridge {
         if (message.channel === "auth" && this.mudClient.encrypted !== true) {
             throw new Error("Refusing to send MUD authentication without TLS");
         }
-        this.mudClient.write(`${JSON.stringify(message)}\n`);
+        const record = JSON.stringify(message);
+        if (Buffer.byteLength(record, "utf8") > this.maxMudRecordBytes) {
+            throw Object.assign(new Error("Outgoing MUD record exceeds the byte limit"), { code: "MUD_RECORD_TOO_LARGE" });
+        }
+        this.mudClient.write(`${record}\n`, error => {
+            if (error && message.channel !== "auth" && message.channel !== "heartbeat") {
+                this.healthServer.incrementDiscordToMudDropped?.();
+                this.logger.error("Pending Discord message to MUD was interrupted; not replaying");
+            }
+        });
     }
 
     /** Writes to the MUD without allowing transport failures to escape event callbacks. */
@@ -390,10 +399,14 @@ class ChatBridge {
             this.writeToMud(message);
             return true;
         } catch (error) {
-            this.logger.error(`Failed to write ${description} to MUD:`, error);
+            this.logger.error(`Failed to write ${description} to MUD; record discarded`);
+            if (message.channel !== "auth" && message.channel !== "heartbeat") {
+                this.healthServer.incrementDiscordToMudDropped?.();
+            }
+            if (!destroyOnFailure && ["MUD_WRITE_CAPACITY", "MUD_RECORD_TOO_LARGE"].includes(error?.code)) return false;
             this.healthServer.setMudConnected(false);
             this.clearHeartbeat();
-            if (destroyOnFailure) this.mudClient.destroy();
+            this.mudClient.destroy();
             if (this.started && !this.stopped) this.scheduleReconnect();
             return false;
         }
