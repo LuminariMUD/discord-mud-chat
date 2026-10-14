@@ -18,14 +18,18 @@ and non-object values, then continues with the next record.
 {"channel":"gossip","name":"Ayla","message":"Ayla waves.","emoted":1}
 ```
 
-`channel`, `name`, and `message` are strings. Channel names are arbitrary and
-case-sensitive. Optional extra fields are tolerated. Only numeric `emoted: 1`
+`channel`, `name`, and `message` must be strings. Missing or non-string fields
+are rejected, including an emote without a string `name`. If present, `emoted`
+must be a finite number. Channel names are arbitrary and case-sensitive.
+Optional extra fields are tolerated. Only numeric `emoted: 1`
 selects emote presentation: send `message` without the author prefix. Ordinary
 records display `name: message`. The bridge does not add italics. Every Discord
 send disables mention parsing (`allowedMentions: { parse: [] }`).
 
 For MUD-to-Discord traffic, every mapping with the matching `mud` name receives
-the record, in configuration order; repeated mappings are not deduplicated.
+the record; repeated mappings are not deduplicated. Deliveries are admitted in
+configuration order and serialized within each Discord destination. Destinations
+drain independently, so send completion order across destinations is not fixed.
 For Discord-to-MUD traffic, only the first mapping with the matching `discord`
 ID is selected. Discord authors use their nickname or account username; their
 stable account ID is used for rate limiting. The wire object has `name`,
@@ -93,12 +97,34 @@ connections.
 length (UTF-16 code units), before sanitization. It is separate from the MUD
 wire-byte limit. Neither setting is Discord's per-post content limit.
 
+Discord [limits message content to 2000 characters](https://docs.discord.com/developers/resources/message#create-message).
+The bridge formats the author/reply prefix first, then splits the complete text
+into at most 2000 UTF-16 code units per post, without splitting a Unicode code
+point. Short messages keep their existing formatting. Lone surrogates become
+U+FFFD; empty/whitespace-only emotes and whitespace-only chunks do not create
+posts. Other content is preserved, including mentions (with parsing disabled on
+every part). A later event for the same destination cannot interleave its parts.
+
+The Discord delivery queue admits at most 256 events and 4 MiB of formatted
+UTF-8 content globally across destinations. Each mapping delivery is an event;
+its full content counts until all parts finish, including while a send is in
+flight. Capacity overflow drops the whole new delivery before sending its first
+part. A failed send drops remaining parts of that event and continues to the
+next event. It never retries an uncertain API send. Shutdown discards pending
+events and starts no further sends; already-issued requests may still settle.
+
 Delivery is best effort: no durable queue, record ID, delivery acknowledgment,
 or exactly-once guarantee exists. Failed Discord sends are logged, not replayed.
 Reconnect attempts use the fixed `mud_retry_delay`, not exponential backoff.
 Health reports socket/Discord connection state, not authenticated delivery.
-`mudToDiscord` counts resolved Discord send promises; `discordToMud` counts
-accepted client write calls, not confirmed game receipt.
+`messages.mudToDiscord` counts resolved Discord send promises (one per successful
+part, not per source event); `messages.discordToMud` counts accepted client write
+calls, not confirmed game receipt. `droppedMessages.mudToDiscord` counts discarded
+delivery events per mapped destination, once per event, including uncertain
+in-flight events at shutdown. An event can therefore contribute successful parts
+and one drop. Syntax/schema errors and unmapped/unavailable channels are rejected
+before admission and do not count as queued delivery drops. Diagnostics omit
+message bodies and API request/error objects.
 
 ## Implementation status
 
@@ -108,10 +134,8 @@ This document initially freezes the behavior at bridge revision
 ordinary and emote records, extensions, arbitrary channels, escaping, Unicode
 fragmentation, byte limits, recovery, and mapping order.
 
-The [Duris project](ongoing-projects/duris-petition-compatibility.md) separately
-tracks work still needed: a native Duris endpoint,
-strict chat field validation, bounded output/backpressure, and long Discord
-message splitting. The baseline receiver may stringify missing/non-string chat
-fields; this is not a valid peer contract. The baseline sender does not yet
-split long posts or bound queued socket writes. Requirements documents and the
-Duris sample plan do not establish that these features already exist.
+The [Duris project](ongoing-projects/duris-petition-compatibility.md) records the
+implemented native endpoint and petition/ptell hooks, with PRs and executable
+verification. This branch adds chat schema validation and bounded Discord
+delivery. Bounded MUD socket writes, complete interoperability, cross-repository
+tests, and tested deployment/sample instructions remain separate work.

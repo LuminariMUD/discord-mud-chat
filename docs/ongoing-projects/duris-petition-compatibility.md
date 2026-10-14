@@ -1,7 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
 Status: in progress; Phases 0-3 verified and open for review; end-to-end
-integration, bridge output limits, and sample/deployment work remain.
+integration, MUD write limits, and sample/deployment work remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -101,12 +101,27 @@ verified as recorded below; unchecked items remain required work.
   Additional real output integration (say/tell/guild/reply/act/paging/snoop) and
   flat-file help catalog/runtime tests pass. A pre-existing missing `<algorithm>`
   include in the output integration harness was fixed to run that test.
-- Next: bridge Phase 4, stacked on `codex/duris-one-way-mappings`: strict chat
-  fields, ordered Unicode-safe Discord chunking with bounded queues, bounded
-  socket writes, independent TCP/TLS peers and cross-repo tests. Duris Phase 3
-  is available for those tests on `codex/duris-petition-exports`. Full isolated
-  game and copyover journeys, samples/guides, and rollout gates remain.
-  No live Discord messages have been sent.
+- Phase 4a is on bridge `codex/bounded-discord-delivery`, based on
+  `codex/duris-one-way-mappings`. It validates chat strings/optional numeric
+  emotes, splits formatted content into <=2000 UTF-16 units at code-point
+  boundaries, and serializes delivery per Discord destination. Queues hold at
+  most 256 delivery events / 4 MiB of UTF-8 content globally, including active
+  events. Failure drops the remaining parts of that event without replay;
+  shutdown cancels queued work. Health counts successful posts and adds a
+  separate event-drop counter. Error logs omit input/API request bodies.
+  Existing relay content/count assertions remain, with waits for serial sends;
+  cross-destination completion order is now explicitly independent.
+- Phase 4a validation: lint and all 98 tests pass on Node 26.11.1/npm 12.0.1.
+  Coverage also passes on both CI Node versions (24.18.0 and 26.8.1), using
+  npm 12.0.1, with all 98 tests passing on each.
+  Coverage: 98.69% lines, 93.18% branches, 92.24% functions; the new delivery
+  module has 100% coverage across all three metrics. Tests include slow sends,
+  event and UTF-8 byte limits, surrogate boundaries, mentions, failure mid-event,
+  synchronous send errors, shutdown races, and subsequent-record recovery.
+- Next: publish Phase 4a, then stack bounded MUD socket writes and independent
+  TCP/TLS/cross-repository tests. Duris Phase 3 is available on
+  `codex/duris-petition-exports`. Full isolated game/copyover journeys,
+  samples/guides, and rollout gates remain. No live Discord messages were sent.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
@@ -327,10 +342,10 @@ channel. Existing privacy/output regressions continue passing.
 
 ### Phase 4 - Verify complete relay and transport limits
 
-- [ ] Add schema checks where malformed records currently interpolate missing
+- [x] Add schema checks where malformed records currently interpolate missing
       or non-string fields into Discord output. Keep well-formed old records and
       optional extra fields compatible.
-- [ ] Handle Discord's 2000-character content limit after including the author
+- [x] Handle Discord's 2000-character content limit after including the author
       or reply label. Preserve existing short-message formatting; split long
       messages in order at safe Unicode boundaries with bounded queueing and
       `allowedMentions: { parse: [] }` on every part. The limit is documented in

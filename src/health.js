@@ -16,6 +16,9 @@ class HealthServer {
             messagesRelayed: {
                 mudToDiscord: 0,
                 discordToMud: 0
+            },
+            messagesDropped: {
+                mudToDiscord: 0
             }
         };
     }
@@ -36,7 +39,8 @@ class HealthServer {
                         mud: this.stats.mudConnected,
                         discord: this.stats.discordConnected
                     },
-                    messages: this.stats.messagesRelayed
+                    messages: this.stats.messagesRelayed,
+                    droppedMessages: this.stats.messagesDropped
                 };
 
                 res.writeHead(status, { "Content-Type": "application/json" });
@@ -130,6 +134,11 @@ class HealthServer {
     /** Records a successfully delivered MUD-to-Discord message. */
     incrementMudToDiscord() {
         this.stats.messagesRelayed.mudToDiscord++;
+    }
+
+    /** Counts incomplete delivery events per mapped Discord destination, not parts. */
+    incrementMudToDiscordDropped() {
+        this.stats.messagesDropped.mudToDiscord++;
     }
 
     /** Records a Discord-to-MUD message. */
