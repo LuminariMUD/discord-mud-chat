@@ -31,6 +31,55 @@ request and do not block implementation review.
 
 ## Current handoff (2026-10-14)
 
+### Review repairs and local verification
+
+- Reviewed every review summary, conversation comment and inline thread on bridge
+  PRs #30-#36. The six actionable findings are in #34 and #35; #30-#33 and #36
+  have no actionable review findings. All six were confirmed against the code.
+- #34 now times out a silent native peer after five seconds and forcibly reaps
+  it during cleanup. Proxy output is bound to its originating connection, and
+  reconnect acceptance allows additional failed attempts. A silent subprocess
+  regression passes. Separate stale-output and failed-retry injections fail on
+  the original driver and pass on the corrected driver.
+- #35 now expires unauthenticated clients after 10 seconds and requires a valid
+  heartbeat within 300 seconds after authentication (including tokenless clients).
+  Partial/rejected input and unauthenticated heartbeats cannot renew the lease.
+  Generic and native real-socket regressions verify expiry, queue discard and
+  clean reconnection using a controlled monotonic clock. The native sample is
+  copied from the companion Duris repair, with its revision/hashes recorded in
+  `docs/mud_example/duris/manifest.json`.
+- The generic sample rejects malformed UTF-8 in all three chat fields before
+  calling the game adapter. Tests cover 36 malformed field/encoding combinations,
+  valid Unicode boundary values, and parser recovery. The original sample was
+  independently shown to deliver an invalid byte to its callback and to retain
+  a silent unauthenticated client beyond 1,000 seconds.
+- The container runner removes its temporary image in an outer `finally` after
+  a successful build. Both real successful execution and an injected run failure
+  verified container/image cleanup and image absence afterward.
+- Local CI equivalents passed for every PR with npm 12.0.1 on both exact workflow
+  Node versions, 24.18.0 and 26.8.1: `npm ci`, `npm run lint`,
+  `npm run test:coverage`, and `npm audit --audit-level=high`. Test counts per
+  PR are 81, 88, 98, 111, 112, 112 and 112; all coverage thresholds passed and
+  all dependency audits reported zero vulnerabilities. Each #30-#34 Docker
+  build passed. #35's production image, loopback topology, health and one-way
+  relay check passed; #36 has identical image inputs and deployment runner.
+- Normal and ASan/UBSan generic sample, native runtime and copied-module checks
+  passed. Sample hashes, native drift and clean-base patch application passed.
+  The isolated full-game journey passed commands, concealment, blocked ingress,
+  save/reload, failed exec, successful copyover, disconnect/disable and shutdown.
+  Both synthetic application configurations and isolated PM2 startup/restart/
+  graceful stop passed. Both Compose variants parsed with a synthetic environment;
+  52 local Markdown link paths were checked without missing targets.
+- Preserve the stack and merge in order #30 -> #31 -> #32 -> #33 -> #34 -> #35
+  -> #36. #30 targets `main`; each later PR targets its predecessor. Preserve
+  commit ancestry when landing, then retarget the next PR to `main`. Repairs
+  are carried into descendants, and #36 retains its literal-dollar correction.
+  No release tag or combined PR is needed. Hosted CI is not a completion gate.
+  Live Discord delivery, staff audience verification and deployment remain
+  outside this review repair work.
+
+### Earlier implementation and configuration records
+
 - Local configuration was subsequently requested and prepared in the ignored
   bridge `.env`, `config/config.json`, and Duris `.env`. The host already uses
   TCP ports 8181/8182 and 3000/3001; actual loopback bind/listen checks confirmed
