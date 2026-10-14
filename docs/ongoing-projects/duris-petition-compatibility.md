@@ -1,6 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phases 0 and 1 verified; native Duris work remains.
+Status: in progress; Phases 0-2 verified and open for review; command hooks and
+end-to-end integration remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -30,10 +31,14 @@ verified as recorded below; unchecked items remain required work.
 - Bridge work starts at `ba1682f3e010f5b06be50b9b1d16a1d5c37b1737` on
   `codex/duris-petition-compatibility`, based on `main`. Phase 0 is the first
   review chunk: [PR #30](https://github.com/LuminariMUD/discord-mud-chat/pull/30),
-  commit `9f47f99`. Phase 1 is on `codex/duris-one-way-mappings`, stacked on it.
-- Duris remains clean at `7156b32431394a12a5a726d1158e1968dd89b3c7` on
-  `master`. Create a separate feature branch before native edits; follow its
-  `AGENTS.md`. No local environment, player data, or running service was changed.
+  commit `9f47f99`. Phase 1 is on `codex/duris-one-way-mappings`, stacked on it:
+  [PR #31](https://github.com/LuminariMUD/discord-mud-chat/pull/31), implementation
+  commit `f8487c8` (subsequent commits update this handoff).
+- Duris transport is on `codex/duris-discord-endpoint`, based on `master` at
+  `7156b32431394a12a5a726d1158e1968dd89b3c7`: implementation commit
+  `03c316b4d`, [PR #83](https://github.com/LuminariMUD/Duris/pull/83). Stack the
+  command-hook branch/PR on this branch. Follow its `AGENTS.md`. No local
+  environment, player data, or running service was changed.
 - Baseline bridge: Node 26.11.1; run the required npm with
   `npx --yes --package=npm@12.0.1 npm <command>` (shell npm is 11.20.0).
   `npm ci`, lint, all 77 tests, coverage, and high-level dependency audit pass.
@@ -56,10 +61,34 @@ verified as recorded below; unchecked items remain required work.
 - Phase 1 validation: lint and all 88 tests pass on Node 26.11.1; coverage is
   98.55% lines, 92.15% branches, 91.67% functions. The coverage suite also passes
   locally on both CI versions (24.18.0 and 26.8.1), using npm 12.0.1.
-- Next: publish the Phase 1 PR, then implement the disabled-by-default native
-  endpoint and command hooks in a Duris branch. Strict chat schema, Discord
-  chunking, bounded transport writes, samples, and final integration remain.
-  Keep PR links and validation records here as each chunk is published.
+- Phase 2: dedicated native endpoint, environment settings, lifecycle hooks,
+  count-only diagnostics, and `docs/network/DISCORD_BRIDGE.md` are implemented.
+  The endpoint is disabled by default and binds only 127.0.0.1. It uses its own
+  zero-timeout `poll` during the connection phase (no `FD_SET` for its sockets),
+  then flushes in the output phase. Work is capped at 4 accepts, 32 read/write
+  attempts and 64 KiB per direction per pulse; output holds at most 256 events
+  and 4,194,308 wire bytes. Only auth/heartbeat controls are consumed; chat is
+  discarded. `discord_bridge_publish()` currently expects plain UTF-8 and
+  serializes only `petition`; no command calls it yet.
+- Phase 2 validation: full `make -C src`, formatting, new
+  `python3 tests/async/test_discord_bridge_runtime.py`, all five existing
+  regressions, and `test_command_latency_runtime.py` pass. The new runner builds
+  under `bin/tests/` and uses real loopback sockets. Linker wrappers force short
+  writes/EINTR/EAGAIN/EPIPE. It covers authentication, exact/oversized records,
+  Unicode, overflow, extra clients, high/invalid descriptors, parser/queue reset,
+  no partial replay, ordinary shutdown, and real successful/failed exec.
+  Full game copyover/save journeys remain Phase 6; the exec test alone is not
+  evidence of the complete game lifecycle. Initial strict-build EAGAIN alias
+  warnings were fixed; the required formatter also corrected pre-existing drift
+  in the touched `comm.c` file.
+- Next: Phase 3 on a new Duris branch based on `codex/duris-discord-endpoint`.
+  Hook accepted `do_petition()`/`do_ptell()` once outside recipient loops,
+  implement bounded plain text conversion/concealment, and execute the real
+  command paths in native tests. Then stack bridge Phase 4 on
+  `codex/duris-one-way-mappings` for strict chat schema, long Discord messages,
+  bounded transport writes, independent interoperability, and cross-repo tests.
+  Samples, guides, isolated game journeys, and final rollout gates remain.
+  No live Discord messages have been sent.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
@@ -236,19 +265,19 @@ actual captured socket writes, not merely the presence of a configuration key.
 
 ### Phase 2 - Implement the Duris endpoint and lifecycle
 
-- [ ] Add `src/net/discord_bridge.c` and `.h` in Duris, following its C++20 style
+- [x] Add `src/net/discord_bridge.c` and `.h` in Duris, following its C++20 style
       and using its existing cJSON dependency. Add the object in `src/Makefile`.
-- [ ] Add non-secret settings to Duris `.env.example`: enable flag, listener
+- [x] Add non-secret settings to Duris `.env.example`: enable flag, listener
       port, record-byte limit, and an optional environment-only token setting.
       Document exact names/defaults together with the implementation. Do not edit
       the local `.env`, credentials, player data, or running deployment.
-- [ ] Wire initialization, bounded polling/flushing, shutdown, and copyover
+- [x] Wire initialization, bounded polling/flushing, shutdown, and copyover
       behavior through `src/net/comm.c`; touch `src/persistence/copyover.c` only
       if the existing lifecycle needs explicit integration.
-- [ ] Implement a bounded newline-record parser, cJSON validation, optional
+- [x] Implement a bounded newline-record parser, cJSON validation, optional
       authentication before export, heartbeat consumption, and rejection of all
       incoming chat. Unknown controls must not trigger broadcasts or crash.
-- [ ] Add a native executable harness using real endpoint code and loopback
+- [x] Add a native executable harness using real endpoint code and loopback
       sockets, including short writes, extra clients, authentication failure,
       invalid descriptors, queue overflow, reconnect, and disabled operation.
 
