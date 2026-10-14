@@ -1,4 +1,4 @@
-const emojiRegexText = require("emoji-regex");
+const { default: emojiRegexText } = require("emoji-regex");
 const { StringDecoder } = require("node:string_decoder");
 const { isLoopbackHost, validateMudTransportConfig } = require("./mud-client");
 
