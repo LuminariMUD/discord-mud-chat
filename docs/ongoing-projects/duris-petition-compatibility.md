@@ -140,7 +140,9 @@ verified as recorded below; unchecked items remain required work.
   coverage is 98.77% lines / 94.80% branches / 94.31% functions. The final TLS
   test additionally checks the exact trust/hostname error codes.
 - Phase 4c is on `codex/duris-node-integration` in both repositories, stacked
-  on bridge Phase 4b and native Phase 3. Native commit `68c5e7d1b` is
+  on bridge Phase 4b and native Phase 3. Bridge commit `4ce1c6b` is
+  [PR #34](https://github.com/LuminariMUD/discord-mud-chat/pull/34).
+  Native commit `68c5e7d1b` is
   [PR #85](https://github.com/LuminariMUD/Duris/pull/85).
   The native harness adds optional stdio
   controls for an external Node driver; its ordinary regression mode remains
@@ -159,7 +161,7 @@ verified as recorded below; unchecked items remain required work.
   (24.18.0 and 26.8.1), in addition to 26.11.1. These are
   production-command harnesses with synthetic players and boundary stubs;
   they do not establish full game boot/save/copyover behavior.
-- Next: publish Phase 4c, then complete full isolated game/copyover journeys and
+- Next: complete full isolated game/copyover journeys and
   the required native/generic samples and deployment guides. No live Discord
   messages were sent; permission/audience checks remain a later rollout gate.
 - Git policy for this project: commit and push each verified chunk, open focused
