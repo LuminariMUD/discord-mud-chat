@@ -31,6 +31,28 @@ request and do not block implementation review.
 
 ## Current handoff (2026-10-14)
 
+- Local configuration was subsequently requested and prepared in the ignored
+  bridge `.env`, `config/config.json`, and Duris `.env`. The host already uses
+  TCP ports 8181/8182 and 3000/3001; actual loopback bind/listen checks confirmed
+  8183/8184 and 3002/3003 were free. This installation selects the dedicated
+  petition endpoint `127.0.0.1:8183` and bridge health `127.0.0.1:3002`.
+  Duris now has `DURIS_DISCORD_ENABLED=TRUE`, `DURIS_DISCORD_PORT=8183`,
+  `DURIS_DISCORD_MAX_RECORD_BYTES=1048576`, and an empty auth token. The bridge
+  JSON matches that endpoint with exactly one `mud_to_discord` petition mapping;
+  its `.env` selects `HEALTH_PORT=3002`, `LOG_LEVEL=info`, and no MUD auth token.
+  All three local files have mode 0600 and remain Git-ignored. Other native
+  `.env` content was preserved byte for byte.
+- Configuration validation passed through the real JSON loader and transport
+  validator; both `.env` files pass Bash syntax checks. The actual health server
+  bound to 127.0.0.1:3002, returned the expected disconnected status, and stopped.
+  **Local activation remains pending:** `DISCORD_TOKEN` is empty, and the
+  staff-channel ID remains the explicit placeholder until supplied. The running
+  Duris process uses `ENVIRONMENT=production`; it was not restarted. Restart the
+  normal supervisor/wrapper to reload `.env` when rollout is authorized:
+  `cycle_mud.sh` reads it once, so in-game copyover or its existing restart loop
+  alone does not pick up the new environment. Direct `npm start` reads the bridge
+  `.env`; if choosing PM2 later, its template's explicit health-port setting must
+  also be changed to 3002 in the deployment profile. No bot connection was made.
 - Bridge work starts at `ba1682f3e010f5b06be50b9b1d16a1d5c37b1737` on
   `codex/duris-petition-compatibility`, based on `main`. Phase 0 is the first
   review chunk: [PR #30](https://github.com/LuminariMUD/discord-mud-chat/pull/30),
