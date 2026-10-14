@@ -1,8 +1,9 @@
 # Duris petition feed and MUD compatibility implementation plan
 
 Status: in progress; Phases 0-4 implemented and verified at the command boundary;
-Phase 5 artifacts and local/PM2 checks are ready for review. Full game/copyover
-acceptance and container runtime verification remain.
+Phase 5 artifacts and local/PM2 checks are published. Full game/save/copyover
+acceptance passes; its review chunk is being published. Local container
+verification remains blocked by Docker socket access.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -192,13 +193,52 @@ verified as recorded below; unchecked items remain required work.
   be run with authorized local Docker access; local socket tests or Compose
   parsing alone do not satisfy it. The checked-in runner is
   `python3 scripts/test-container.py`.
-- Next: complete full isolated game/save/copyover journeys and the container
-  gate. Stack any new native acceptance changes on Duris #85; the existing
-  `tests/async/run_copyover_runtime_journey.py` and flat-file journey fixtures
-  provide disposable state, synthetic players, and real successful/failed
-  copyover paths. Extend/reuse those without starting a production instance.
-  No live Discord
-  messages were sent; permission/audience checks remain a later rollout gate.
+- Next: publish the full-game acceptance PRs, finish the local container gate
+  after authorized Docker access is restored, then audit implementation
+  completion. Environment recovery was requested; the current runner still
+  fails at `docker info` with socket permission denied. No live Discord messages
+  were sent; permission/audience checks remain a later requested rollout gate.
+- Phase 6 is on `codex/duris-game-acceptance` in both repositories,
+  based on bridge #35 and native #86. Native acceptance commit `8d183de95` is
+  [PR #87](https://github.com/LuminariMUD/Duris/pull/87).
+  A new disposable full-game journey uses
+  real account/character creation, saves/reload, failed exec and successful
+  copyover with the actual Node relay. The first run exposed native input dollar
+  doubling that the direct-command harness had missed. A focused regression
+  failed before the fix and passes afterward: the exporter now applies native
+  `delete_doubledollar()` to its converted copy, preserving command arguments,
+  recipient behavior and audit logs.
+- The dollar fix is published independently as native commit `68053767e`,
+  [PR #86](https://github.com/LuminariMUD/Duris/pull/86), stacked on #85.
+  Full normal/flat-file builds, formatting, command regressions, ASan/UBSan
+  plus Node integration, endpoint, privacy, phase, WebSocket and output checks
+  pass. The bridge's native samples now match acceptance revision `8d183de95`
+  (the production modules are identical to the dollar-fix revision); their checker also
+  extracts the production dollar-unescaping function for executable tests.
+- Phase 6 full-game verification passes with
+  `python3 scripts/test-duris.py --duris /home/staging/duris --full-game`:
+  a fresh flat-file build, two synthetic accounts, real gameplay sockets and the
+  actual Node relay exercise both event types, zero online staff, echo off,
+  concealed staff, dollar escaping, rejected commands, unrelated say/tell,
+  blocked Discord posts and direct forged ingress. A deliberately invalid staged
+  executable forces actual failed `execl`; original player sockets, acknowledged
+  saves, native delivery and the same bridge connection remain usable. Successful
+  exec preserves player sockets, reloads saved players, recreates the listener,
+  and reconnects Node. Both commands work after copyover, after stopping Node,
+  and after a disabled restart; native audit entries remain present exactly once.
+  Normal shutdown and later save/reload pass. This is a complete game process
+  with a minimal flat-file world, not a live Discord or production-database test.
+- Phase 6 bridge verification: lint and all 111 coverage tests pass with unchanged
+  98.77% lines / 94.80% branches / 94.31% functions. Updated native sample copies
+  pass hash/drift/clean-base patch/compiled-copy/Node checks normally and under
+  ASan/UBSan. Full native build, whole-file formatting and all five baseline
+  regressions pass after the dollar fix.
+- Additional Phase 5 evidence: [CI run 38587090639](https://github.com/LuminariMUD/discord-mud-chat/actions/runs/38587090639)
+  passed at bridge `6bb754c`. The inspected container job log confirms the actual
+  Dockerfile build, application smoke, host-loopback peer, health and one-way
+  relay all passed on its Ubuntu Linux runner. Both Node jobs and the generic
+  sanitizer job passed too. This is separate from the unavailable Docker socket
+  in this executor; no local Docker success is claimed.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
@@ -475,7 +515,7 @@ fixture peer. No sample or documentation change silently enables game ingress.
 - [ ] Run the matrix below and record source revisions, commands, outcomes, and
       any environmental limitations. A mock transport alone is insufficient for
       native listener/copyover claims.
-- [ ] In an isolated local Duris test instance, confirm accepted petitions and
+- [x] In an isolated local Duris test instance, confirm accepted petitions and
       staff replies preserve game behavior and reach the Node test sink.
 - [ ] During the later requested deployment, use the staff-only Discord channel
       for a small real-service smoke test of both event types. Confirm an
@@ -483,7 +523,7 @@ fixture peer. No sample or documentation change silently enables game ingress.
       not send messages or change a running service.
 - [ ] Start with one enabled endpoint and one Node process. Verify the configured
       Discord audience and that no other channel mapping is present.
-- [ ] Exercise rollback: stop the Node bridge or disable the Duris endpoint and
+- [x] Exercise rollback: stop the Node bridge or disable the Duris endpoint and
       restart using the normal local procedure. Native petition/ptell behavior
       must continue. Keep generic deployment defaults unchanged.
 
@@ -491,8 +531,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
 exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
-Node/native command-boundary integration and local/PM2 sample deployment are
-verified. Container execution and full isolated-game acceptance remain pending.
+Node/native command-boundary integration, local/PM2 sample deployment and full
+isolated-game acceptance are verified. Container execution passed on an isolated
+CI Linux runner; execution in this workspace remains blocked by daemon access.
 
 ```json
 {
