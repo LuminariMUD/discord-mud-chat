@@ -45,8 +45,22 @@ request and do not block implementation review.
 - Configuration validation passed through the real JSON loader and transport
   validator; both `.env` files pass Bash syntax checks. The actual health server
   bound to 127.0.0.1:3002, returned the expected disconnected status, and stopped.
-  **Local activation remains pending:** `DISCORD_TOKEN` is empty. The supplied
-  staff-channel ID is configured and the one-way mapping validates. The running
+  The supplied staff-channel ID is configured and the one-way mapping validates.
+  At the user's request, `DISCORD_TOKEN` was copied directly from the existing
+  Luminari installation's `.env` into the bridge `.env`; equality and loading
+  were verified without displaying the credential. The source was unchanged,
+  and the destination remains mode 0600 and Git-ignored. Luminari's existing
+  gossip/auction/gratz channel mappings do not overlap Duris's petition channel;
+  its MUD/health ports are 8181/3000 versus Duris's configured 8183/3002.
+  Both processes may use the same bot in the same Discord server: Discord permits
+  [multiple Gateway sessions](https://docs.discord.com/developers/events/gateway#sharding),
+  while this bridge filters incoming messages by channel ID and Duris blocks
+  all inbound chat. They share the bot identity and
+  [token-wide API limits](https://docs.discord.com/developers/topics/rate-limits);
+  token rotation must be applied to both installations.
+  **Local activation remains pending:** no new Discord login or live delivery
+  test was performed, and the destination's staff-only permissions still require
+  rollout verification. The running
   Duris process uses `ENVIRONMENT=production`; it was not restarted. Restart the
   normal supervisor/wrapper to reload `.env` when rollout is authorized:
   `cycle_mud.sh` reads it once, so in-game copyover or its existing restart loop
