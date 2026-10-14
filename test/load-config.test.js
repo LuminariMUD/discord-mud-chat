@@ -92,3 +92,24 @@ test("loadConfig surfaces invalid JSON", () => {
         fsModule: fakeFileSystem("not json")
     }), SyntaxError);
 });
+
+test("loadConfig preserves omitted and supported mapping directions", () => {
+    const channels = [
+        { discord: "staff", mud: "petition", direction: "mud_to_discord" },
+        { discord: "public", mud: "gossip", direction: "both" },
+        { discord: "legacy", mud: "Guild/Élite" }
+    ];
+    const config = loadConfig({ configPath: "config.json", env: {},
+        fsModule: fakeFileSystem(JSON.stringify({ channels })) });
+    assert.deepEqual(config.channels, channels);
+});
+
+test("loadConfig rejects every unsupported direction before startup", () => {
+    for (const direction of ["", "BOTH", "discord_to_mud", "mud_to_discrod", null, true, 0, [], {}]) {
+        assert.throws(() => loadConfig({ configPath: "config.json", env: {},
+            fsModule: fakeFileSystem(JSON.stringify({ channels: [
+                { discord: "public", mud: "gossip" },
+                { discord: "staff", mud: "petition", direction }
+            ] })) }), /channels\[1\]\.direction must be/);
+    }
+});

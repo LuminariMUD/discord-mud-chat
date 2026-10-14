@@ -32,6 +32,26 @@ stable account ID is used for rate limiting. The wire object has `name`,
 `channel`, and `message`, with no required `emoted` field. Configured emoji
 stripping applies in this direction. Discord mentions are sanitized.
 
+## Mapping direction
+
+Each `channels` entry can set `direction`:
+
+| Value | MUD to Discord | Discord to MUD |
+| --- | --- | --- |
+| Omitted or `"both"` | Allowed | Allowed |
+| `"mud_to_discord"` | Allowed | Blocked |
+
+```json
+{"discord":"STAFF_CHANNEL_ID","mud":"petition","direction":"mud_to_discord"}
+```
+
+Unknown values (including `null`, booleans, and misspellings) fail configuration
+loading and direct `ChatBridge` construction. A blocked first-match mapping does
+not fall through to another mapping. Ignored posts neither write chat nor
+consume rate-limit state or increment `discordToMud`. Authentication and
+heartbeats still run. MUD fan-out and duplicate mapping semantics are unchanged.
+Channel names remain generic; `petition` has no special meaning in this bridge.
+
 ## Controls and transport
 
 With `MUD_AUTH_TOKEN` set and `mud_tls: true`, the bridge sends this first after
@@ -89,7 +109,7 @@ ordinary and emote records, extensions, arbitrary channels, escaping, Unicode
 fragmentation, byte limits, recovery, and mapping order.
 
 The [Duris project](ongoing-projects/duris-petition-compatibility.md) separately
-tracks work still needed: mapping direction validation, a native Duris endpoint,
+tracks work still needed: a native Duris endpoint,
 strict chat field validation, bounded output/backpressure, and long Discord
 message splitting. The baseline receiver may stringify missing/non-string chat
 fields; this is not a valid peer contract. The baseline sender does not yet

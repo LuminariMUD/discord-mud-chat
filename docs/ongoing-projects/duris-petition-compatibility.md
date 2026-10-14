@@ -1,6 +1,6 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phase 0 protocol contract and baseline established.
+Status: in progress; Phases 0 and 1 verified; native Duris work remains.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -29,7 +29,8 @@ verified as recorded below; unchecked items remain required work.
 
 - Bridge work starts at `ba1682f3e010f5b06be50b9b1d16a1d5c37b1737` on
   `codex/duris-petition-compatibility`, based on `main`. Phase 0 is the first
-  review chunk. Subsequent bridge PRs will stack on this branch.
+  review chunk: [PR #30](https://github.com/LuminariMUD/discord-mud-chat/pull/30),
+  commit `9f47f99`. Phase 1 is on `codex/duris-one-way-mappings`, stacked on it.
 - Duris remains clean at `7156b32431394a12a5a726d1158e1968dd89b3c7` on
   `master`. Create a separate feature branch before native edits; follow its
   `AGENTS.md`. No local environment, player data, or running service was changed.
@@ -48,8 +49,16 @@ verified as recorded below; unchecked items remain required work.
   configuration using injected sockets; live certificate tests remain Phase 4.
 - Phase 0 validation: lint and all 81 tests pass; coverage is 98.53% lines,
   91.61% branches, 91.59% functions. `git diff --check` passes.
-- Next: publish the Phase 0 PR, stack Phase 1 direction validation/enforcement,
-  then implement the disabled-by-default native endpoint and command hooks.
+- Phase 1 implements shared validation in `config/load-config.js` and direct
+  `ChatBridge` construction, then blocks ingress immediately after the first
+  mapping match. Tests capture writes, counters, and rate-limit state for
+  one-way, mixed, duplicate, default, invalid, TLS-auth, and loopback cases.
+- Phase 1 validation: lint and all 88 tests pass on Node 26.11.1; coverage is
+  98.55% lines, 92.15% branches, 91.67% functions. The coverage suite also passes
+  locally on both CI versions (24.18.0 and 26.8.1), using npm 12.0.1.
+- Next: publish the Phase 1 PR, then implement the disabled-by-default native
+  endpoint and command hooks in a Duris branch. Strict chat schema, Discord
+  chunking, bounded transport writes, samples, and final integration remain.
   Keep PR links and validation records here as each chunk is published.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
@@ -212,13 +221,13 @@ MUD has been tested follows from passing generic protocol fixtures.
 
 ### Phase 1 - Add the optional one-way mapping
 
-- [ ] Update `config/load-config.js` and `src/bridge.js` as needed to validate
+- [x] Update `config/load-config.js` and `src/bridge.js` as needed to validate
       and enforce `direction`, including direct bridge construction.
-- [ ] Leave existing configuration defaults and generic examples bidirectional.
-- [ ] Add tests proving `mud_to_discord` forwards MUD messages but performs no
+- [x] Leave existing configuration defaults and generic examples bidirectional.
+- [x] Add tests proving `mud_to_discord` forwards MUD messages but performs no
       Discord chat writes, increments no Discord-to-MUD counter, and does not
       consume rate-limit state for ignored Discord posts.
-- [ ] Test mixed mappings, missing direction, explicit `both`, invalid values,
+- [x] Test mixed mappings, missing direction, explicit `both`, invalid values,
       and existing duplicate/fan-out semantics. Authentication and heartbeats
       must still work with a one-way mapping.
 
@@ -341,9 +350,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 ## Proposed Duris bridge configuration
 
-This is the target sample after the direction feature and Duris endpoint exist.
-The current bridge ignores the proposed `direction` key, so copying this example
-alone does not enforce one-way operation today.
+This is the target sample after the Duris endpoint exists. The Phase 1 bridge
+now enforces `direction`, but native transport and command hooks remain to be
+implemented; this configuration alone cannot create a Duris listener.
 
 ```json
 {

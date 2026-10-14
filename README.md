@@ -158,6 +158,20 @@ certificate-validated TLS connection is established. `MUD_AUTH_TOKEN` is loaded
 only from the environment; legacy `mud_auth_token` values in `config.json` are
 ignored and should be removed.
 
+### Channel direction
+
+Mappings are bidirectional by default. Set `"direction": "mud_to_discord"` on a
+mapping to export MUD messages while ignoring Discord posts in that channel:
+
+```json
+{ "discord": "STAFF_CHANNEL_ID", "mud": "petition", "direction": "mud_to_discord" }
+```
+
+Explicit `"direction": "both"` also permits both directions. Other values fail
+startup. A blocked first matching mapping never falls through to another;
+authentication and heartbeats continue normally. See the
+[wire protocol](docs/protocol.md) for framing, mapping order, and delivery limits.
+
 ## Message Format
 
 The application exchanges JSON messages with the MUD. Each UTF-8 JSON record
