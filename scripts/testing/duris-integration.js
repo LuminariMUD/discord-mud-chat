@@ -24,12 +24,16 @@ async function main() {
     const lines = readline.createInterface({ input: native.stdout });
     const pending = new Map(), sockets = new Set();
     let nextId = 0, stderr = "", bridge, proxy, upstream, downstream;
-    let forwarding = Promise.resolve(), connections = 0;
+    let forwarding = Promise.resolve(), connections = 0, startupTimer;
     native.stderr.on("data", bytes => { stderr += bytes; });
     const ready = new Promise((resolve, reject) => {
+        startupTimer = setTimeout(() => reject(new Error(`native peer startup timed out: ${stderr}`)), 5000);
         lines.on("line", line => {
             const value = JSON.parse(line);
-            if (value.port) resolve(value.port);
+            if (value.port) {
+                clearTimeout(startupTimer);
+                resolve(value.port);
+            }
             else {
                 const request = pending.get(value.id);
                 pending.delete(value.id);
@@ -56,8 +60,7 @@ async function main() {
             native.stdin.write(JSON.stringify({ id, action, text }) + "\n");
         });
     }
-    function forward(bytes, fragment = 1) {
-        const destination = downstream;
+    function forward(destination, bytes, fragment = 1) {
         forwarding = forwarding.then(async () => {
             for (let i = 0; i < bytes.length && !destination.destroyed; i += fragment) {
                 destination.write(bytes.subarray(i, i + fragment));
@@ -78,7 +81,7 @@ async function main() {
             socket.setNoDelay(true);
             sockets.add(socket);
             sockets.add(connection);
-            connection.on("data", bytes => forward(bytes));
+            connection.on("data", bytes => forward(socket, bytes));
             socket.on("data", bytes => {
                 connection.write(bytes);
                 input += decoder.write(bytes);
@@ -141,7 +144,7 @@ async function main() {
 
         // Inject malformed/oversized wire records through the real socket before
         // the next native event; the production native serializer never makes them.
-        await forward(Buffer.from("null\ninvalid private-body\n" + "x".repeat(limit + 1) + "\n"), 16384);
+        await forward(downstream, Buffer.from("null\ninvalid private-body\n" + "x".repeat(limit + 1) + "\n"), 16384);
         const long = "🔥".repeat(2100) + " @everyone";
         await rpc("petition", long);
         await until(() => posts.length === 6);
@@ -167,10 +170,10 @@ async function main() {
         assert.equal(health.stats.messagesDropped.discordToMud, 0);
 
         client.write('{"channel":"incomplete');
-        await forward(Buffer.from('{"channel":"incomplete'));
+        await forward(downstream, Buffer.from('{"channel":"incomplete'));
         await until(() => bridge.mudDataBuffer.length > 0);
         await rpc("restart");
-        await until(async () => connections === 2 && (await rpc("status")).authenticated && health.stats.mudConnected);
+        await until(async () => connections >= 2 && (await rpc("status")).authenticated && health.stats.mudConnected);
         assert.equal(bridge.mudDataBuffer, "");
         await rpc("reply", "after reconnect");
         await until(() => posts.length === 7);
@@ -196,13 +199,15 @@ async function main() {
         assert.equal(signal, null);
         console.log("Node/native petition integration passed: both commands, controls-only ingress, Unicode, limits, reconnect and rollback");
     } finally {
+        clearTimeout(startupTimer);
         if (bridge) await bridge.stop();
         for (const socket of sockets) socket.destroy();
         if (proxy) await new Promise(resolve => proxy.close(resolve));
         lines.close();
-        if (native.exitCode === null && native.signalCode === null) {
+        if (native.pid && native.exitCode === null && native.signalCode === null) {
             const exited = once(native, "exit");
-            native.kill();
+            // A stuck test peer may not handle SIGTERM; cleanup must also be bounded.
+            native.kill("SIGKILL");
             await exited;
         }
     }

@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { EventEmitter, once } = require("node:events");
-const { fork, execFileSync } = require("node:child_process");
-const { mkdtempSync, readFileSync, rmSync } = require("node:fs");
+const { fork, execFile, execFileSync } = require("node:child_process");
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const tls = require("node:tls");
@@ -10,6 +10,28 @@ const MudClient = require("../src/mud-client");
 const { ChatBridge } = require("../src/bridge");
 const HealthServer = require("../src/health");
 const fixtures = require("./fixtures/mud-protocol/records.json");
+
+test("native integration startup times out and kills a silent peer", { timeout: 12000 }, async t => {
+    const dir = mkdtempSync(path.join(tmpdir(), "mud-native-startup-"));
+    const peer = path.join(dir, "silent-peer");
+    const pidFile = path.join(dir, "pid");
+    t.after(() => {
+        try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL"); }
+        catch (error) { assert.ok(["ENOENT", "ESRCH"].includes(error.code)); }
+        rmSync(dir, { recursive: true, force: true });
+    });
+    writeFileSync(peer, '#!/usr/bin/env node\n' +
+        'require("node:fs").writeFileSync(' + JSON.stringify(pidFile) + ', String(process.pid));\n' +
+        'process.on("SIGTERM", () => {});\nsetInterval(() => {}, 1000);\n', { mode: 0o755 });
+    const result = await new Promise(resolve => {
+        execFile(process.execPath, [path.join(__dirname, "../scripts/testing/duris-integration.js"), peer],
+            { timeout: 10000, killSignal: "SIGKILL" }, (error, stdout, stderr) => resolve({ error, stderr }));
+    });
+    assert.equal(result.error?.code, 1, result.stderr);
+    assert.equal(result.error?.killed, false);
+    assert.match(result.stderr, /native peer startup timed out/);
+    assert.throws(() => process.kill(Number(readFileSync(pidFile, "utf8")), 0), { code: "ESRCH" });
+});
 
 async function until(predicate) {
     const deadline = Date.now() + 5000;
