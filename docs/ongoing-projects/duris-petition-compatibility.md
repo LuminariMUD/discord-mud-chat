@@ -163,7 +163,9 @@ verified as recorded below; unchecked items remain required work.
   production-command harnesses with synthetic players and boundary stubs;
   they do not establish full game boot/save/copyover behavior.
 - Phase 5 is on bridge `codex/mud-integration-samples`, based on
-  Phase 4c. It supplies the Duris JSON template/operator guide, byte-identical
+  Phase 4c: implementation commit `912736c`,
+  [PR #35](https://github.com/LuminariMUD/discord-mud-chat/pull/35).
+  It supplies the Duris JSON template/operator guide, byte-identical
   native module copies and an exact integration patch with a drift/build runner.
   The generic example is now a standalone Linux/POSIX C89/cJSON transport with
   an explicit game callback, bounded records/queues/pulse work, whole-event
@@ -190,8 +192,12 @@ verified as recorded below; unchecked items remain required work.
   be run with authorized local Docker access; local socket tests or Compose
   parsing alone do not satisfy it. The checked-in runner is
   `python3 scripts/test-container.py`.
-- Next: publish the Phase 5 review chunk, then complete full isolated
-  game/save/copyover journeys and the container gate. No live Discord
+- Next: complete full isolated game/save/copyover journeys and the container
+  gate. Stack any new native acceptance changes on Duris #85; the existing
+  `tests/async/run_copyover_runtime_journey.py` and flat-file journey fixtures
+  provide disposable state, synthetic players, and real successful/failed
+  copyover paths. Extend/reuse those without starting a production instance.
+  No live Discord
   messages were sent; permission/audience checks remain a later rollout gate.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
