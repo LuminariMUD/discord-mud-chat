@@ -25,3 +25,14 @@ Tests cover:
 - Configuration token precedence
 - Winston console integration
 - Runtime dependency composition and signal handling
+- Shared JSON wire fixtures, channel direction, and invalid chat schema recovery
+- Ordered Unicode-safe Discord chunking, global event/byte queue bounds, failed
+  sends, shutdown races, and body-free diagnostics
+
+`test/fixtures/mud-protocol/records.json` is a language-independent corpus for
+other peers. `test/discord-delivery.test.js` uses controlled send promises to
+verify that later events cannot interleave parts, slow destinations remain
+independent, and queued memory stays bounded. Existing bridge assertions await
+serial delivery before checking content/counts; no real Discord credentials are
+used. Native Duris and full cross-repository checks are tracked in the
+[project handoff](ongoing-projects/duris-petition-compatibility.md).

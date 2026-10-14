@@ -2,6 +2,7 @@ const { default: emojiRegexText } = require("emoji-regex");
 const { StringDecoder } = require("node:string_decoder");
 const { isLoopbackHost, validateMudTransportConfig } = require("./mud-client");
 const { validateChannelDirections } = require("../config/load-config");
+const { DiscordDelivery } = require("./discord-delivery");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
@@ -38,6 +39,11 @@ class ChatBridge {
         this.healthServer = healthServer;
         this.events = events;
         this.logger = logger;
+        this.discordDelivery = new DiscordDelivery({
+            onSent: () => this.healthServer.incrementMudToDiscord(),
+            onDrop: () => this.healthServer.incrementMudToDiscordDropped?.(),
+            logger
+        });
         this.timers = timers;
         this.now = now;
         this.emojiRegexFactory = emojiRegexFactory;
@@ -216,12 +222,18 @@ class ChatBridge {
 
         try {
             messageData = JSON.parse(record);
-        } catch (error) {
-            this.logger.error("Failed to parse message from MUD:", error);
+        } catch {
+            this.logger.error("Failed to parse message from MUD; discarding record");
             return false;
         }
         if (messageData === null || Array.isArray(messageData) || typeof messageData !== "object") {
             this.logger.error("Ignoring MUD record because it is not a JSON object");
+            return false;
+        }
+        if (typeof messageData.channel !== "string" || typeof messageData.name !== "string"
+            || typeof messageData.message !== "string"
+            || (messageData.emoted !== undefined && !Number.isFinite(messageData.emoted))) {
+            this.logger.error("Ignoring MUD record with invalid chat fields");
             return false;
         }
 
@@ -235,15 +247,7 @@ class ChatBridge {
             const message = messageData.emoted === 1
                 ? `${messageData.message}`
                 : `${messageData.name}: ${messageData.message}`;
-            discordChannel.send({
-                content: message,
-                allowedMentions: { parse: [] }
-            })
-                .then(() => this.healthServer.incrementMudToDiscord())
-                .catch(error => {
-                    this.logger.error(`Failed to send message to Discord channel ${channel.discord}:`, error);
-                });
-            relayed = true;
+            if (this.discordDelivery.enqueue(channel.discord, discordChannel, message)) relayed = true;
         }
 
         return relayed;
@@ -407,6 +411,7 @@ class ChatBridge {
     async stop() {
         if (this.stopping) return this.stopping;
         this.stopped = true;
+        this.discordDelivery.close();
         const operations = {
             events: () => this.unbindEvents(),
             heartbeat: () => this.clearHeartbeat(),

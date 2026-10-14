@@ -80,6 +80,7 @@ class FakeHealthServer {
         this.mudConnected = [];
         this.discordConnected = [];
         this.mudToDiscord = 0;
+        this.mudToDiscordDropped = 0;
         this.discordToMud = 0;
     }
 
@@ -93,6 +94,10 @@ class FakeHealthServer {
 
     incrementMudToDiscord() {
         this.mudToDiscord++;
+    }
+
+    incrementMudToDiscordDropped() {
+        this.mudToDiscordDropped++;
     }
 
     incrementDiscordToMud() {
@@ -243,7 +248,7 @@ test("shared protocol fixtures survive byte-wise UTF-8 fragmentation and coalesc
         } else {
             bridge.handleMudData(bytes);
         }
-        await Promise.resolve();
+        await new Promise(resolve => setImmediate(resolve));
         assert.deepEqual(discordClient.sentMessages.map(({ message }) => message),
             protocolFixtures.chat.map(({ content }) => ({ content, allowedMentions: { parse: [] } })));
         assert.equal(healthServer.mudToDiscord, protocolFixtures.chat.length);
@@ -280,7 +285,7 @@ test("shared control fixtures match auth-first and heartbeat wire writes", () =>
     for (const wire of mudClient.writes) assert.ok(wire.endsWith("\n"));
 });
 
-test("legacy mappings preserve case-sensitive fan-out, duplicates, and first-match ingress", () => {
+test("legacy mappings preserve case-sensitive fan-out, duplicates, and first-match ingress", async () => {
     const { bridge, discordClient, mudClient } = createHarness({ config: { channels: [
         { discord: "discord-1", mud: "Guild/Élite" },
         { discord: "discord-2", mud: "Guild/Élite" },
@@ -290,6 +295,7 @@ test("legacy mappings preserve case-sensitive fan-out, duplicates, and first-mat
     ] } });
     for (const id of ["discord-1", "discord-2", "discord-3"]) discordClient.addChannel(id);
     bridge.handleMudData(Buffer.from(protocolFixtures.chat[2].wire));
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(discordClient.sentMessages.map(({ id }) => id), ["discord-1", "discord-2", "discord-1"]);
     assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), true);
     assert.deepEqual(parsedWrites(mudClient), [{ channel: "Guild/Élite", name: "Hero", message: "Hello from Discord" }]);
@@ -362,14 +368,14 @@ test("one-way mappings export MUD chat and allow controls without Discord ingres
         { channel: "heartbeat", name: "bot", message: "ping" }
     ]);
     assert.equal(bridge.handleMudData(mudRecord({ channel: "petition", name: "Player", message: "Help" })), true);
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(discordClient.sentMessages, [{ id: "discord-1", message: {
         content: "Player: Help", allowedMentions: { parse: [] }
     } }]);
     assert.equal(healthServer.mudToDiscord, 1);
 });
 
-test("a blocked first mapping never falls through or rate-limits another mapping", () => {
+test("a blocked first mapping never falls through or rate-limits another mapping", async () => {
     const { bridge, discordClient, mudClient, healthServer } = createHarness({ config: { channels: [
         { discord: "discord-1", mud: "Guild/Élite", direction: "mud_to_discord" },
         { discord: "discord-1", mud: "gossip", direction: "both" },
@@ -385,7 +391,8 @@ test("a blocked first mapping never falls through or rate-limits another mapping
     assert.equal(healthServer.discordToMud, 1);
     for (const id of ["discord-1", "discord-2"]) discordClient.addChannel(id);
     bridge.handleMudData(Buffer.from(protocolFixtures.chat[2].wire));
-    assert.deepEqual(discordClient.sentMessages.map(({ id }) => id), ["discord-1", "discord-1", "discord-2"]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discordClient.sentMessages.map(({ id }) => id), ["discord-1", "discord-2", "discord-1"]);
 });
 
 test("omitted and explicit both directions retain first-match ingress", () => {
@@ -490,6 +497,7 @@ test("MUD messages relay to mapped Discord channels with emote formatting", asyn
         emoted: 1
     })), true);
 
+    await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(discordClient.sentMessages, [
         {
             id: "discord-1",
@@ -506,7 +514,7 @@ test("MUD messages relay to mapped Discord channels with emote formatting", asyn
             }
         }
     ]);
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(healthServer.mudToDiscord, 2);
 });
 
@@ -553,7 +561,7 @@ test("split and coalesced MUD records are relayed without corrupting Unicode", a
         firstRecord.subarray(emojiOffset + 1),
         secondRecord
     ])), true);
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
         "Ayla: Hello 🔥",
@@ -606,7 +614,7 @@ test("valid records around an oversized fragment are relayed without closing the
         Buffer.from("\n"),
         followingRecord
     ])), true);
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
         "Ayla: Hello",
@@ -659,13 +667,71 @@ test("non-object MUD records cannot interrupt later valid records", async () => 
         Buffer.from("null\n[]\n42\n"),
         validRecord
     ])), true);
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(errors.filter(args => String(args[0]).includes("not a JSON object")).length, 3);
     assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), [
         "Ayla: Still running"
     ]);
     assert.equal(healthServer.mudToDiscord, 1);
+});
+
+test("invalid chat fields are rejected without logging bodies or stopping later records", async () => {
+    const { bridge, discordClient, errors } = createHarness();
+    discordClient.addChannel("discord-1");
+    const valid = { channel: "gossip", name: "Ayla", message: "valid", emoted: 0 };
+    for (const field of ["channel", "name", "message", "emoted"]) {
+        for (const value of [null, true, [], {}, field === "emoted" ? "1" : 42]) {
+            assert.equal(bridge.handleMudData(mudRecord({ ...valid, [field]: value })), false);
+        }
+        if (field !== "emoted") {
+            const missing = { ...valid };
+            delete missing[field];
+            assert.equal(bridge.handleMudData(mudRecord(missing)), false);
+        }
+    }
+    assert.equal(bridge.handleMudData(Buffer.from("private-petition-body\n")), false);
+    bridge.handleMudData(Buffer.from('{"channel":"gossip","name":"A","message":"bad","emoted":1e999}\n'));
+    assert.equal(bridge.handleMudData(mudRecord({ ...valid, emoted: 2, future: { ignored: true } })), true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(discordClient.sentMessages.map(({ message }) => message.content), ["Ayla: valid"]);
+    assert.ok(!JSON.stringify(errors).includes("private-petition-body"));
+});
+
+test("bridge splits long emotes and counts posts rather than source events", async () => {
+    const { bridge, discordClient, healthServer } = createHarness();
+    discordClient.addChannel("discord-1");
+    const message = "🔥".repeat(2200);
+    bridge.handleMudData(mudRecord({ channel: "gossip", name: "Unused", message, emoted: 1 }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(discordClient.sentMessages.map(({ message }) => message.content).join(""), message);
+    assert.equal(healthServer.mudToDiscord, 3);
+    assert.equal(healthServer.mudToDiscordDropped, 0);
+});
+
+test("bridge shutdown drops queued events and never starts another Discord send", async () => {
+    const { bridge, discordClient, healthServer } = createHarness();
+    const sends = [];
+    discordClient.channels.cache.set("discord-1", { send: payload => new Promise(resolve => sends.push({ payload, resolve })) });
+    bridge.handleMudData(mudRecord({ channel: "gossip", name: "A", message: "x".repeat(4000) }));
+    bridge.handleMudData(mudRecord({ channel: "gossip", name: "B", message: "next" }));
+    await bridge.stop();
+    assert.equal(healthServer.mudToDiscordDropped, 2);
+    sends[0].resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(sends.length, 1);
+    assert.equal(healthServer.mudToDiscord, 1);
+});
+
+test("delivery failures support older injected health services without a drop counter", async () => {
+    const { bridge, discordClient, healthServer, errors } = createHarness();
+    healthServer.incrementMudToDiscordDropped = undefined;
+    discordClient.channels.cache.set("discord-1", { send: () => Promise.reject(new Error("private-request-body")) });
+    bridge.handleMudData(mudRecord({ channel: "gossip", name: "A", message: "private-request-body" }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(healthServer.mudToDiscord, 0);
+    assert.ok(!JSON.stringify(errors).includes("private-request-body"));
+    assert.equal(bridge.discordDelivery.pendingEvents, 0);
 });
 
 test("MUD write failures are contained and schedule one reconnect", () => {
