@@ -1,6 +1,6 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: planned; implementation has not started.
+Status: in progress; Phase 0 protocol contract and baseline established.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -22,8 +22,39 @@ not a migration of the whole application to an outbound-only bot. Duris's
 this initial rollout. Additional Duris channels require a later explicit scope
 change; no dormant routes for them are needed now.
 
-This document is the planning deliverable. The checklists below describe future
-implementation work, not changes already made or tests already passed.
+This document is the implementation handoff. Checked items are completed and
+verified as recorded below; unchecked items remain required work.
+
+## Current handoff (2026-10-14)
+
+- Bridge work starts at `ba1682f3e010f5b06be50b9b1d16a1d5c37b1737` on
+  `codex/duris-petition-compatibility`, based on `main`. Phase 0 is the first
+  review chunk. Subsequent bridge PRs will stack on this branch.
+- Duris remains clean at `7156b32431394a12a5a726d1158e1968dd89b3c7` on
+  `master`. Create a separate feature branch before native edits; follow its
+  `AGENTS.md`. No local environment, player data, or running service was changed.
+- Baseline bridge: Node 26.11.1; run the required npm with
+  `npx --yes --package=npm@12.0.1 npm <command>` (shell npm is 11.20.0).
+  `npm ci`, lint, all 77 tests, coverage, and high-level dependency audit pass.
+  Coverage: 98.53% lines, 91.28% branches, 91.59% functions; no vulnerabilities.
+- Baseline Duris: `make -C src`, `./scripts/format.sh --check`, and the five
+  existing regression commands listed below all pass (chat privacy, game-loop
+  phases, WebSocket runtime, word renderer, output profiles).
+- Phase 0 adds `docs/protocol.md` and reusable JSON fixtures under
+  `test/fixtures/mud-protocol/`. Tests exercise byte-wise UTF-8 fragmentation,
+  coalescing, escaping, malformed records, exact/oversized byte boundaries,
+  auth/heartbeat wire output, case-sensitive fan-out, duplicate mappings, and
+  first-match ingress. Existing transport tests pin generic loopback/TLS
+  configuration using injected sockets; live certificate tests remain Phase 4.
+- Phase 0 validation: lint and all 81 tests pass; coverage is 98.53% lines,
+  91.61% branches, 91.59% functions. `git diff --check` passes.
+- Next: publish the Phase 0 PR, stack Phase 1 direction validation/enforcement,
+  then implement the disabled-by-default native endpoint and command hooks.
+  Keep PR links and validation records here as each chunk is published.
+- Git policy for this project: commit and push each verified chunk, open focused
+  ready-for-review PRs, stack dependent changes, and leave merging to review.
+  No release tags until a tested release is actually being prepared.
+
 
 ## Evidence from the current repositories
 
@@ -46,11 +77,9 @@ Duris paths in this document are relative to `/home/staging/duris`.
 | Existing examples | [docs/mud_example/discord_bridge.c](../mud_example/discord_bridge.c) has hand-written JSON parsing, a 4096-byte I/O buffer, and an 8192-byte serialization buffer, despite a larger advertised record limit. Companion `.c` files contain incomplete integration fragments. | Repair and test generic examples as well as adding a Duris example. Do not present these fragments as complete compilable source files. |
 | Existing tests | [test/bridge.test.js](../../test/bridge.test.js), [test/mud-client.test.js](../../test/mud-client.test.js), and the remaining suite cover generic relay, framing, Unicode, TLS, retries, health, and shutdown. | Extend these tests; retain their assertions for existing behavior. Add executable native integration tests for Duris. |
 
-The build/test baseline has not been executed during planning. Dependencies are
-not installed in this bridge checkout. The inspected shell has Node 26.11.1 and
-npm 11.20.0; the project requires Node >=24.18.0 and npm >=12.0.1. Establish the
-baseline with the declared toolchain before implementing changes. No live MUD
-session or Discord delivery has been tested.
+Planning originally had no build/test baseline. The execution baseline above
+now supersedes that limitation. No live MUD session or Discord delivery has
+been tested; isolated native and real-service checks remain later gates.
 
 ## Design decisions and compatibility boundaries
 
@@ -166,14 +195,14 @@ Discord sends. Existing Duris petition logs remain the native audit record.
 
 ### Phase 0 - Freeze the existing contract
 
-- [ ] Record current test/lint results and both source revisions before editing.
+- [x] Record current test/lint results and both source revisions before editing.
       Use the repository toolchain and separate existing failures from regressions.
-- [ ] Add a small shared fixture corpus under `test/fixtures/mud-protocol/` for
+- [x] Add a small shared fixture corpus under `test/fixtures/mud-protocol/` for
       ordinary records, emotes, arbitrary channels, auth, heartbeat, escaping,
       Unicode, malformed input, and record boundaries.
-- [ ] Pin existing generic inbound first-match/outbound fan-out behavior and
+- [x] Pin existing generic inbound first-match/outbound fan-out behavior and
       generic loopback/TLS configurations without any Duris settings.
-- [ ] Write `docs/protocol.md` describing the actual wire contract, control
+- [x] Write `docs/protocol.md` describing the actual wire contract, control
       records, byte limits, and delivery guarantees. Distinguish current behavior
       from requirements documents that describe unimplemented features.
 
