@@ -1,6 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: implementation complete and published for review. Phases 0-6 implementation
+Status: implementation complete; bridge integration is tracked in PRs #30-#36.
+Phases 0-6 implementation
 checks pass, including full game/save/copyover acceptance, local Docker execution,
 and the actual Compose health probe. Live Discord delivery and audience checks
 remain a separate, later requested deployment gate.
@@ -31,11 +32,45 @@ request and do not block implementation review.
 
 ## Current handoff (2026-10-14)
 
+### Merge preparation and next-session handoff
+
+- The bridge's default branch is `main`. PRs #30-#35 were merged in dependency
+  order using merge commits, preserving all original commits. Each child was
+  retargeted to `main` after its parent landed. No rebase, squash, force push,
+  conflict resolution, or release tag was needed. At this handoff's preparation,
+  `main` is `88ecc3a2a0fcdd0f7034f820d322543cdbcf1dc5`; #36 carries the final
+  acceptance work and this handoff. Its PR records the final merge result.
+- Each of those six proposed merge trees was tested locally with lint and
+  coverage on Node 24.18.0 and 26.8.1, using npm 12.0.1. Counts were 81, 88,
+  98, 111, 112 and 112; all configured coverage thresholds passed. Dependencies
+  were installed from the unchanged lockfile and the audit found zero
+  vulnerabilities. Every resulting GitHub merge tree and both parents matched
+  the locally verified candidate; `main` was refreshed before each merge.
+- A later #36 review identified stale native sample references in this handoff.
+  The reproducible native revision is
+  `6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`, as recorded in the sample manifest
+  and README. The earlier implementation records below are historical evidence;
+  use that manifest revision when reproducing the final sample validation.
+  Manifest hashes and copied module bytes were checked directly against that
+  Git revision. The generic C89 sample passed a fresh ASan/UBSan run.
+- At preparation, companion native Duris PRs #83-#87 remain open. The next
+  session should inspect their current `master`, rules, reviews and dependency
+  chain, then integrate that native stack if it remains outstanding. Bridge
+  publication alone does not complete native integration.
+- After both repositories are integrated, the remaining rollout work is the
+  existing real Discord smoke test and staff-only audience check in Phase 6:
+  verify both event types, one-way ingress, one enabled endpoint and one bridge
+  process. Deployment and real Discord messages require the later requested
+  rollout; neither is part of this merge session. No open bridge issues or
+  linked closing issues were found, so there is no completed issue to close.
+
 ### Review repairs and local verification
 
-- Reviewed every review summary, conversation comment and inline thread on bridge
-  PRs #30-#36. The six actionable findings are in #34 and #35; #30-#33 and #36
-  have no actionable review findings. All six were confirmed against the code.
+- The earlier repair pass reviewed every review summary, conversation comment
+  and inline thread on bridge PRs #30-#36. The six actionable findings are in
+  #34 and #35; #30-#33 and #36
+  had no actionable review findings at that time. All six were confirmed against
+  the code. The later #36 documentation finding is addressed above.
 - #34 now times out a silent native peer after five seconds and forcibly reaps
   it during cleanup. Proxy output is bound to its originating connection, and
   reconnect acceptance allows additional failed attempts. A silent subprocess
@@ -313,9 +348,10 @@ request and do not block implementation review.
   [PR #86](https://github.com/LuminariMUD/Duris/pull/86), stacked on #85.
   Full normal/flat-file builds, formatting, command regressions, ASan/UBSan
   plus Node integration, endpoint, privacy, phase, WebSocket and output checks
-  pass. The bridge's native samples now match acceptance revision `8d183de95`
-  (the production modules are identical to the dollar-fix revision); their checker also
-  extracts the production dollar-unescaping function for executable tests.
+  pass. The final bridge native samples match acceptance revision
+  `6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`, including the subsequent native
+  deadline repair. Their checker also extracts the production dollar-unescaping
+  function for executable tests.
 - Phase 6 full-game verification passes with
   `python3 scripts/test-duris.py --duris /home/staging/duris --full-game`:
   a fresh flat-file build, two synthetic accounts, real gameplay sockets and the
@@ -343,11 +379,12 @@ request and do not block implementation review.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
-- Final review audit: all seven bridge PRs (#30-#36) and all five native PRs
-  (#83-#87) are open, ready for review, and mergeable against their recorded
-  parent branches. Each stack follows the dependency order above. The final
-  handoff-only commit is included in bridge #36; production source validation
-  corresponds to bridge `0418d61` and native `8d183de95`.
+- Earlier review audit: all seven bridge PRs (#30-#36) and all five native PRs
+  (#83-#87) were open, ready for review, and mergeable against their recorded
+  parent branches. Each stack followed the dependency order above. The final
+  repair validation corresponds to bridge `0e70cf8463f3590757e9f02b03977ff69d7f9406`
+  and native `6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`; the merge handoff above
+  supersedes this earlier PR-state snapshot.
 
 
 ## Evidence from the current repositories
