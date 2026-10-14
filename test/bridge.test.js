@@ -82,6 +82,7 @@ class FakeHealthServer {
         this.mudToDiscord = 0;
         this.mudToDiscordDropped = 0;
         this.discordToMud = 0;
+        this.discordToMudDropped = 0;
     }
 
     setMudConnected(value) {
@@ -98,6 +99,10 @@ class FakeHealthServer {
 
     incrementMudToDiscordDropped() {
         this.mudToDiscordDropped++;
+    }
+
+    incrementDiscordToMudDropped() {
+        this.discordToMudDropped++;
     }
 
     incrementDiscordToMud() {
@@ -743,9 +748,66 @@ test("MUD write failures are contained and schedule one reconnect", () => {
 
     assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), false);
     assert.equal(healthServer.discordToMud, 0);
+    assert.equal(healthServer.discordToMudDropped, 1);
     assert.deepEqual(healthServer.mudConnected, [false]);
     assert.equal(timers.timeouts.length, 1);
     assert.ok(errors.some(args => String(args[0]).includes("Discord message")));
+});
+
+test("MUD backpressure rejects new chat without reconnecting or counting controls as chat drops", () => {
+    const { bridge, mudClient, healthServer, timers, errors } = createHarness();
+    bridge.start();
+    mudClient.completeConnection();
+    mudClient.write = () => { throw Object.assign(new Error("private body"), { code: "MUD_WRITE_CAPACITY" }); };
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), false);
+    timers.intervals[0].callback();
+    assert.equal(healthServer.discordToMud, 0);
+    assert.equal(healthServer.discordToMudDropped, 1);
+    assert.deepEqual(healthServer.mudConnected, [true]);
+    assert.equal(mudClient.destroyed, false);
+    assert.equal(timers.timeouts.length, 0);
+    assert.ok(!JSON.stringify(errors).includes("private body"));
+});
+
+test("MUD record limits include JSON escaping and UTF-8 but exclude the LF delimiter", () => {
+    const { bridge, mudClient, healthServer } = createHarness();
+    const message = { channel: "gossip", name: "Zoë", message: '🔥\\"\n' };
+    bridge.maxMudRecordBytes = Buffer.byteLength(JSON.stringify(message));
+    assert.equal(bridge.safeWriteToMud(message, "Discord message"), true);
+    assert.equal(bridge.safeWriteToMud({ ...message, message: message.message + "x" }, "Discord message"), false);
+    assert.deepEqual(parsedWrites(mudClient), [message]);
+    assert.equal(healthServer.discordToMudDropped, 1);
+    assert.equal(mudClient.destroyed, false);
+});
+
+test("accepted false writes count once and interrupted chat is reported separately from controls", () => {
+    const { bridge, mudClient, healthServer, timers, errors } = createHarness();
+    const callbacks = [];
+    mudClient.write = (value, callback) => { callbacks.push(callback); return false; };
+    bridge.start();
+    mudClient.completeConnection();
+    timers.intervals[0].callback();
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), true);
+    assert.equal(healthServer.discordToMud, 1);
+    callbacks[0](new Error("token"));
+    callbacks[1](new Error("heartbeat"));
+    assert.equal(healthServer.discordToMudDropped, 0);
+    callbacks[2](new Error("private body"));
+    assert.equal(healthServer.discordToMudDropped, 1);
+    assert.ok(!JSON.stringify(errors).includes("private body"));
+    assert.ok(!JSON.stringify(errors).includes("token"));
+});
+
+test("failed auth admission closes the connection and does not start a heartbeat", () => {
+    const { bridge, mudClient, healthServer, timers } = createHarness();
+    mudClient.write = () => { throw Object.assign(new Error("full"), { code: "MUD_WRITE_CAPACITY" }); };
+    bridge.start();
+    mudClient.completeConnection();
+    assert.equal(mudClient.destroyed, true);
+    assert.equal(healthServer.discordToMudDropped, 0);
+    assert.deepEqual(healthServer.mudConnected, [true, false]);
+    assert.equal(timers.intervals.length, 0);
+    assert.equal(timers.timeouts.length, 1);
 });
 
 test("writeToMud refuses direct authentication writes without an encrypted transport", () => {

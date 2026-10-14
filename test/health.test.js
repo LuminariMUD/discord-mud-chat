@@ -23,7 +23,7 @@ test("health endpoint reports connection state and relay counters", async t => {
     assert.equal(unhealthy.status, "unhealthy");
     assert.deepEqual(unhealthy.connections, { mud: false, discord: false });
     assert.deepEqual(unhealthy.messages, { mudToDiscord: 0, discordToMud: 0 });
-    assert.deepEqual(unhealthy.droppedMessages, { mudToDiscord: 0 });
+    assert.deepEqual(unhealthy.droppedMessages, { mudToDiscord: 0, discordToMud: 0 });
     assert.ok(Date.parse(unhealthy.timestamp));
     assert.ok(unhealthy.uptime >= 0);
 
@@ -33,6 +33,7 @@ test("health endpoint reports connection state and relay counters", async t => {
     health.incrementDiscordToMud();
     health.incrementDiscordToMud();
     health.incrementMudToDiscordDropped();
+    health.incrementDiscordToMudDropped();
 
     const healthyResponse = await fetch(`http://127.0.0.1:${port}/health`);
     const healthy = await healthyResponse.json();
@@ -40,7 +41,7 @@ test("health endpoint reports connection state and relay counters", async t => {
     assert.equal(healthy.status, "healthy");
     assert.deepEqual(healthy.connections, { mud: true, discord: true });
     assert.deepEqual(healthy.messages, { mudToDiscord: 1, discordToMud: 2 });
-    assert.deepEqual(healthy.droppedMessages, { mudToDiscord: 1 });
+    assert.deepEqual(healthy.droppedMessages, { mudToDiscord: 1, discordToMud: 1 });
 });
 
 test("health server returns 404 and start is idempotent", async t => {

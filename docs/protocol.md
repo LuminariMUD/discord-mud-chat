@@ -93,6 +93,19 @@ records are discarded through the next LF. Later records remain usable.
 Disconnects reset the input buffer and UTF-8 decoder so fragments never cross
 connections.
 
+Outgoing records use the same byte limit after JSON serialization, excluding
+LF. Oversized records are rejected whole, including controls. The transport
+admits writes only after TCP/TLS connection completes, so optional auth is the
+first record. Pending writes are bounded by 256 records and 4 MiB of wire bytes,
+including records awaiting write callbacks and the socket's own buffered bytes.
+It also stops admitting new records after
+[`socket.write()` returns false](https://nodejs.org/api/net.html#socketwritedata-encoding-callback)
+until `drain`: that return value means the current write was accepted, so the
+bridge never retries it. Extra records are dropped whole; a skipped heartbeat
+can run again at the next interval. Failed auth admission closes the connection.
+Disconnect/replacement/shutdown discard pending writes without replay. Bytes
+already handed to the OS or peer cannot be recalled.
+
 `largest_printable_string` limits incoming Discord content by JavaScript string
 length (UTF-16 code units), before sanitization. It is separate from the MUD
 wire-byte limit. Neither setting is Discord's per-post content limit.
@@ -126,6 +139,13 @@ and one drop. Syntax/schema errors and unmapped/unavailable channels are rejecte
 before admission and do not count as queued delivery drops. Diagnostics omit
 message bodies and API request/error objects.
 
+`droppedMessages.discordToMud` counts eligible chat records rejected before a
+write (offline, record limit, or capacity) and accepted writes whose completion
+fails or remains uncertain on close/shutdown. A later failure does not undo the
+accepted-write counter. Successful write callbacks only establish handoff to
+the socket/OS, not game receipt. Auth/heartbeat controls and posts blocked by
+mapping direction, filters, or rate limits do not count as chat drops.
+
 ## Implementation status
 
 This document initially freezes the behavior at bridge revision
@@ -136,6 +156,6 @@ fragmentation, byte limits, recovery, and mapping order.
 
 The [Duris project](ongoing-projects/duris-petition-compatibility.md) records the
 implemented native endpoint and petition/ptell hooks, with PRs and executable
-verification. This branch adds chat schema validation and bounded Discord
-delivery. Bounded MUD socket writes, complete interoperability, cross-repository
-tests, and tested deployment/sample instructions remain separate work.
+verification. Bounded delivery in both directions and independent generic
+TCP/TLS interoperability are implemented. Full Node/native cross-repository
+tests and tested deployment/sample instructions remain separate work.

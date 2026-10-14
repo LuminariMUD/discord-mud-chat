@@ -2,6 +2,13 @@ const { EventEmitter } = require("node:events");
 const net = require("node:net");
 const tls = require("node:tls");
 
+const MAX_PENDING_MUD_WRITES = 256;
+const MAX_PENDING_MUD_BYTES = 4 * 1024 * 1024;
+
+function transportError(code, message) {
+    return Object.assign(new Error(message), { code });
+}
+
 /** Returns whether a hostname or address is explicitly confined to loopback. */
 function isLoopbackHost(host) {
     if (typeof host !== "string") return false;
@@ -37,6 +44,7 @@ class MudClient extends EventEmitter {
         this.tlsModule = tlsModule;
         this.socket = undefined;
         this.encrypted = false;
+        this.writeState = undefined;
     }
 
     /** Opens a fresh socket and forwards its events through this transport. */
@@ -45,16 +53,13 @@ class MudClient extends EventEmitter {
             throw new Error("Plaintext MUD transport is restricted to loopback hosts; enable mud_tls for remote connections");
         }
 
-        const previousSocket = this.socket;
-        if (previousSocket) {
-            this.socket = undefined;
-            this.encrypted = false;
-            previousSocket.destroy();
-        }
+        this.destroy();
 
         let socket;
+        const state = { ready: false, blocked: false, pending: new Set(), bytes: 0 };
         const handleConnect = () => {
             if (this.socket !== socket) return;
+            state.ready = true;
             this.encrypted = socket.encrypted === true;
             callback();
         };
@@ -75,7 +80,11 @@ class MudClient extends EventEmitter {
         }
 
         this.socket = socket;
+        this.writeState = state;
         this.encrypted = false;
+        socket.on("drain", () => {
+            if (this.socket === socket) state.blocked = false;
+        });
         socket.on("data", data => {
             if (this.socket === socket) this.emit("data", data);
         });
@@ -86,26 +95,68 @@ class MudClient extends EventEmitter {
             if (this.socket !== socket) return;
             this.socket = undefined;
             this.encrypted = false;
+            this.writeState = undefined;
+            this.discardWrites(state);
             this.emit("close", hadError);
         });
         return this;
     }
 
-    /** Writes data to the active socket. */
-    write(value) {
-        if (!this.socket) throw new Error("MUD transport is not connected");
-        return this.socket.write(value);
+    /** Admits a whole write; false still means accepted, as with socket.write(). */
+    write(value, callback) {
+        const socket = this.socket, state = this.writeState;
+        if (!socket || !state.ready || socket.destroyed || socket.writable === false) {
+            throw transportError("MUD_NOT_CONNECTED", "MUD transport is not connected");
+        }
+        const bytes = Buffer.byteLength(value, "utf8");
+        if (state.blocked || socket.writableNeedDrain
+            || state.pending.size >= MAX_PENDING_MUD_WRITES
+            || bytes > MAX_PENDING_MUD_BYTES - Math.max(state.bytes, socket.writableLength || 0)) {
+            throw transportError("MUD_WRITE_CAPACITY", "MUD write capacity exceeded; record discarded");
+        }
+        const entry = { bytes, callback };
+        state.pending.add(entry);
+        state.bytes += bytes;
+        try {
+            const writable = socket.write(value, error => this.finishWrite(state, entry, error));
+            if (!writable) state.blocked = true;
+            return writable;
+        } catch (error) {
+            // A thrown write was not admitted. Its caller owns failure accounting.
+            if (state.pending.delete(entry)) state.bytes -= bytes;
+            throw error;
+        }
+    }
+
+    /** Settles a pending write once; stale callbacks cannot change a new connection. */
+    finishWrite(state, entry, error) {
+        if (!state.pending.delete(entry)) return;
+        state.bytes -= entry.bytes;
+        entry.callback?.(error);
+    }
+
+    /** Discards uncertain pending writes on disconnect; nothing is replayed. */
+    discardWrites(state) {
+        state.ready = false;
+        for (const entry of state.pending) {
+            this.finishWrite(state, entry, transportError("MUD_WRITE_INTERRUPTED", "MUD write interrupted"));
+        }
     }
 
     /** Closes the active socket and clears its security state. */
     destroy() {
         if (!this.socket) return;
-        this.socket.destroy();
+        const socket = this.socket, state = this.writeState;
         this.socket = undefined;
+        this.writeState = undefined;
         this.encrypted = false;
+        socket.destroy();
+        this.discardWrites(state);
     }
 }
 
 module.exports = MudClient;
 module.exports.isLoopbackHost = isLoopbackHost;
 module.exports.validateMudTransportConfig = validateMudTransportConfig;
+module.exports.MAX_PENDING_MUD_WRITES = MAX_PENDING_MUD_WRITES;
+module.exports.MAX_PENDING_MUD_BYTES = MAX_PENDING_MUD_BYTES;
