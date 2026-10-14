@@ -1,6 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phase 0 protocol contract and baseline established.
+Status: in progress; Phases 0-3 verified and open for review; end-to-end
+integration, bridge output limits, and sample/deployment work remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -29,10 +30,15 @@ verified as recorded below; unchecked items remain required work.
 
 - Bridge work starts at `ba1682f3e010f5b06be50b9b1d16a1d5c37b1737` on
   `codex/duris-petition-compatibility`, based on `main`. Phase 0 is the first
-  review chunk. Subsequent bridge PRs will stack on this branch.
-- Duris remains clean at `7156b32431394a12a5a726d1158e1968dd89b3c7` on
-  `master`. Create a separate feature branch before native edits; follow its
-  `AGENTS.md`. No local environment, player data, or running service was changed.
+  review chunk: [PR #30](https://github.com/LuminariMUD/discord-mud-chat/pull/30),
+  commit `9f47f99`. Phase 1 is on `codex/duris-one-way-mappings`, stacked on it:
+  [PR #31](https://github.com/LuminariMUD/discord-mud-chat/pull/31), implementation
+  commit `f8487c8` (subsequent commits update this handoff).
+- Duris transport is on `codex/duris-discord-endpoint`, based on `master` at
+  `7156b32431394a12a5a726d1158e1968dd89b3c7`: implementation commit
+  `03c316b4d`, [PR #83](https://github.com/LuminariMUD/Duris/pull/83). Stack the
+  command-hook branch/PR on this branch (now implemented as recorded below). Follow its `AGENTS.md`. No local
+  environment, player data, or running service was changed.
 - Baseline bridge: Node 26.11.1; run the required npm with
   `npx --yes --package=npm@12.0.1 npm <command>` (shell npm is 11.20.0).
   `npm ci`, lint, all 77 tests, coverage, and high-level dependency audit pass.
@@ -48,9 +54,59 @@ verified as recorded below; unchecked items remain required work.
   configuration using injected sockets; live certificate tests remain Phase 4.
 - Phase 0 validation: lint and all 81 tests pass; coverage is 98.53% lines,
   91.61% branches, 91.59% functions. `git diff --check` passes.
-- Next: publish the Phase 0 PR, stack Phase 1 direction validation/enforcement,
-  then implement the disabled-by-default native endpoint and command hooks.
-  Keep PR links and validation records here as each chunk is published.
+- Phase 1 implements shared validation in `config/load-config.js` and direct
+  `ChatBridge` construction, then blocks ingress immediately after the first
+  mapping match. Tests capture writes, counters, and rate-limit state for
+  one-way, mixed, duplicate, default, invalid, TLS-auth, and loopback cases.
+- Phase 1 validation: lint and all 88 tests pass on Node 26.11.1; coverage is
+  98.55% lines, 92.15% branches, 91.67% functions. The coverage suite also passes
+  locally on both CI versions (24.18.0 and 26.8.1), using npm 12.0.1.
+- Phase 2: dedicated native endpoint, environment settings, lifecycle hooks,
+  count-only diagnostics, and `docs/network/DISCORD_BRIDGE.md` are implemented.
+  The endpoint is disabled by default and binds only 127.0.0.1. It uses its own
+  zero-timeout `poll` during the connection phase (no `FD_SET` for its sockets),
+  then flushes in the output phase. Work is capped at 4 accepts, 32 read/write
+  attempts and 64 KiB per direction per pulse; output holds at most 256 events
+  and 4,194,308 wire bytes. Only auth/heartbeat controls are consumed; chat is
+  discarded. `discord_bridge_publish()` expects plain UTF-8 and serializes only
+  `petition`; Phase 3 calls it through the native conversion helper.
+- Phase 2 validation: full `make -C src`, formatting, new
+  `python3 tests/async/test_discord_bridge_runtime.py`, all five existing
+  regressions, and `test_command_latency_runtime.py` pass. The new runner builds
+  under `bin/tests/` and uses real loopback sockets. Linker wrappers force short
+  writes/EINTR/EAGAIN/EPIPE. It covers authentication, exact/oversized records,
+  Unicode, overflow, extra clients, high/invalid descriptors, parser/queue reset,
+  no partial replay, ordinary shutdown, and real successful/failed exec.
+  Full game copyover/save journeys remain Phase 6; the exec test alone is not
+  evidence of the complete game lifecycle. Initial strict-build EAGAIN alias
+  warnings were fixed; the required formatter also corrected pre-existing drift
+  in the touched `comm.c` file.
+- Phase 3 is implemented on Duris `codex/duris-petition-exports`, commit
+  `b2de29cbf`, [PR #84](https://github.com/LuminariMUD/Duris/pull/84), stacked
+  on #83. Accepted `do_petition` and `do_ptell` each call
+  `discord_petition_export` once before native delivery and outside recipient
+  loops. It uses `AnsiString`/UTF-8 conversion, removes terminal control
+  sequences, bounds input by native buffers, and preserves plain dollars.
+  Explicit concealment states redact sender/target names; non-trusted reply
+  senders are also `Someone`. See `docs/network/DISCORD_BRIDGE.md` for predicates.
+  Petition and staff ptell help entries now disclose the optional feed.
+- Phase 3 validation: full build and formatting pass. The production-command
+  harness `test_discord_petition_export.py` passes normally and with
+  `SANITIZE=1` (ASan/UBSan). It executes exact command bodies with production
+  character types/parser, synthetic players, boundary delivery/log/visibility
+  stubs, and real conversion/serialization/socket I/O. Accepted/rejected,
+  zero/one/multiple staff, echo on/off, concealment, Unicode/escapes/control
+  stripping, max buffers, overflow, disconnect, and disabled cases pass.
+  The native endpoint suite and the five existing baseline regressions also pass.
+  Additional real output integration (say/tell/guild/reply/act/paging/snoop) and
+  flat-file help catalog/runtime tests pass. A pre-existing missing `<algorithm>`
+  include in the output integration harness was fixed to run that test.
+- Next: bridge Phase 4, stacked on `codex/duris-one-way-mappings`: strict chat
+  fields, ordered Unicode-safe Discord chunking with bounded queues, bounded
+  socket writes, independent TCP/TLS peers and cross-repo tests. Duris Phase 3
+  is available for those tests on `codex/duris-petition-exports`. Full isolated
+  game and copyover journeys, samples/guides, and rollout gates remain.
+  No live Discord messages have been sent.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
@@ -163,7 +219,7 @@ the plain text exported to Discord.
 
 The new endpoint is disabled by default. When enabled, its initial plaintext
 listener binds to `127.0.0.1` on configurable port 8181, separate from all player
-ports. This is a proposed listener; it does not currently exist. Accept one
+ports. The Phase 2 implementation provides this listener. Accept one
 active bridge client and reject extra clients without replacing the active one.
 
 Use nonblocking I/O, bounded input/output queues, per-pulse work budgets, and
@@ -212,13 +268,13 @@ MUD has been tested follows from passing generic protocol fixtures.
 
 ### Phase 1 - Add the optional one-way mapping
 
-- [ ] Update `config/load-config.js` and `src/bridge.js` as needed to validate
+- [x] Update `config/load-config.js` and `src/bridge.js` as needed to validate
       and enforce `direction`, including direct bridge construction.
-- [ ] Leave existing configuration defaults and generic examples bidirectional.
-- [ ] Add tests proving `mud_to_discord` forwards MUD messages but performs no
+- [x] Leave existing configuration defaults and generic examples bidirectional.
+- [x] Add tests proving `mud_to_discord` forwards MUD messages but performs no
       Discord chat writes, increments no Discord-to-MUD counter, and does not
       consume rate-limit state for ignored Discord posts.
-- [ ] Test mixed mappings, missing direction, explicit `both`, invalid values,
+- [x] Test mixed mappings, missing direction, explicit `both`, invalid values,
       and existing duplicate/fan-out semantics. Authentication and heartbeats
       must still work with a one-way mapping.
 
@@ -227,19 +283,19 @@ actual captured socket writes, not merely the presence of a configuration key.
 
 ### Phase 2 - Implement the Duris endpoint and lifecycle
 
-- [ ] Add `src/net/discord_bridge.c` and `.h` in Duris, following its C++20 style
+- [x] Add `src/net/discord_bridge.c` and `.h` in Duris, following its C++20 style
       and using its existing cJSON dependency. Add the object in `src/Makefile`.
-- [ ] Add non-secret settings to Duris `.env.example`: enable flag, listener
+- [x] Add non-secret settings to Duris `.env.example`: enable flag, listener
       port, record-byte limit, and an optional environment-only token setting.
       Document exact names/defaults together with the implementation. Do not edit
       the local `.env`, credentials, player data, or running deployment.
-- [ ] Wire initialization, bounded polling/flushing, shutdown, and copyover
+- [x] Wire initialization, bounded polling/flushing, shutdown, and copyover
       behavior through `src/net/comm.c`; touch `src/persistence/copyover.c` only
       if the existing lifecycle needs explicit integration.
-- [ ] Implement a bounded newline-record parser, cJSON validation, optional
+- [x] Implement a bounded newline-record parser, cJSON validation, optional
       authentication before export, heartbeat consumption, and rejection of all
       incoming chat. Unknown controls must not trigger broadcasts or crash.
-- [ ] Add a native executable harness using real endpoint code and loopback
+- [x] Add a native executable harness using real endpoint code and loopback
       sockets, including short writes, extra clients, authentication failure,
       invalid descriptors, queue overflow, reconnect, and disabled operation.
 
@@ -249,20 +305,20 @@ Forged incoming chat cannot affect any player or execute any command.
 
 ### Phase 3 - Connect petitions and staff replies
 
-- [ ] Add the two accepted-command hooks in `src/cmd/actcomm.c::do_petition()`
+- [x] Add the two accepted-command hooks in `src/cmd/actcomm.c::do_petition()`
       and `src/cmd/actwiz.c::do_ptell()`. Keep rejection branches and native
       output behavior unchanged.
-- [ ] Implement plain text conversion, reply target labels, concealed-sender
+- [x] Implement plain text conversion, reply target labels, concealed-sender
       redaction, and full-record serialization with bounds derived from actual
       Duris name/text buffers. Do not confuse `MAX_INPUT_LENGTH` with wire-record
       size or silently truncate a JSON record to fit a small fixed buffer.
-- [ ] Test real command paths with NPC/blocked/silenced/disabled/empty petitions,
+- [x] Test real command paths with NPC/blocked/silenced/disabled/empty petitions,
       and missing, self, NPC, invisible/ineligible, or disconnected reply targets.
       Only accepted commands may produce bridge events.
-- [ ] Test zero/one/many online staff, echo on/off, normal/hidden staff senders,
+- [x] Test zero/one/many online staff, echo on/off, normal/hidden staff senders,
       quotes, backslashes, dollars, color markup, Unicode, and an unavailable
       bridge. Each accepted command exports once regardless of recipient count.
-- [ ] Assert other channels, ordinary tells, staff echoes, and `send_to_gods()`
+- [x] Assert other channels, ordinary tells, staff echoes, and `send_to_gods()`
       notifications never enter the petition feed.
 
 Gate: petitions and `ptell` replies reach the fixture client once per accepted
@@ -341,9 +397,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 ## Proposed Duris bridge configuration
 
-This is the target sample after the direction feature and Duris endpoint exist.
-The current bridge ignores the proposed `direction` key, so copying this example
-alone does not enforce one-way operation today.
+The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
+exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
+Full Node/native integration and tested deployment instructions remain pending.
 
 ```json
 {

@@ -337,6 +337,82 @@ test("direct bridge construction rejects authentication without TLS", () => {
     }), /authentication requires mud_tls/);
 });
 
+test("direct bridge construction rejects unsupported mapping directions", () => {
+    for (const direction of ["", "BOTH", "discord_to_mud", "mud_to_discrod", null, true, 0, [], {}]) {
+        assert.throws(() => createHarness({ config: { channels: [
+            { discord: "discord-1", mud: "petition", direction }
+        ] } }), /channels\[0\]\.direction must be/);
+    }
+});
+
+test("one-way mappings export MUD chat and allow controls without Discord ingress state", async () => {
+    const { bridge, discordClient, mudClient, healthServer, timers } = createHarness({ config: { channels: [
+        { discord: "discord-1", mud: "petition", direction: "mud_to_discord" }
+    ] } });
+    discordClient.addChannel("discord-1");
+    bridge.start();
+    mudClient.completeConnection();
+    const rateLimitsBefore = Array.from(bridge.rateLimits);
+    for (let i = 0; i < 20; i++) assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), false);
+    assert.deepEqual(Array.from(bridge.rateLimits), rateLimitsBefore);
+    assert.equal(healthServer.discordToMud, 0);
+    timers.intervals[0].callback();
+    assert.deepEqual(parsedWrites(mudClient), [
+        { channel: "auth", name: "bot", message: "secret" },
+        { channel: "heartbeat", name: "bot", message: "ping" }
+    ]);
+    assert.equal(bridge.handleMudData(mudRecord({ channel: "petition", name: "Player", message: "Help" })), true);
+    await Promise.resolve();
+    assert.deepEqual(discordClient.sentMessages, [{ id: "discord-1", message: {
+        content: "Player: Help", allowedMentions: { parse: [] }
+    } }]);
+    assert.equal(healthServer.mudToDiscord, 1);
+});
+
+test("a blocked first mapping never falls through or rate-limits another mapping", () => {
+    const { bridge, discordClient, mudClient, healthServer } = createHarness({ config: { channels: [
+        { discord: "discord-1", mud: "Guild/Élite", direction: "mud_to_discord" },
+        { discord: "discord-1", mud: "gossip", direction: "both" },
+        { discord: "discord-1", mud: "Guild/Élite" },
+        { discord: "discord-2", mud: "Guild/Élite", direction: "both" }
+    ] } });
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), false);
+    assert.deepEqual(mudClient.writes, []);
+    assert.equal(bridge.rateLimits.size, 0);
+    assert.equal(healthServer.discordToMud, 0);
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage({ channel: { id: "discord-2" } })), true);
+    assert.deepEqual(parsedWrites(mudClient), [{ channel: "Guild/Élite", name: "Hero", message: "Hello from Discord" }]);
+    assert.equal(healthServer.discordToMud, 1);
+    for (const id of ["discord-1", "discord-2"]) discordClient.addChannel(id);
+    bridge.handleMudData(Buffer.from(protocolFixtures.chat[2].wire));
+    assert.deepEqual(discordClient.sentMessages.map(({ id }) => id), ["discord-1", "discord-1", "discord-2"]);
+});
+
+test("omitted and explicit both directions retain first-match ingress", () => {
+    for (const direction of [undefined, "both"]) {
+        const { bridge, mudClient } = createHarness({ config: { channels: [
+            { discord: "discord-1", mud: "gossip", direction },
+            { discord: "discord-1", mud: "petition", direction: "mud_to_discord" }
+        ] } });
+        assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), true);
+        assert.deepEqual(parsedWrites(mudClient), [{ channel: "gossip", name: "Hero", message: "Hello from Discord" }]);
+    }
+});
+
+test("local plaintext one-way mappings send heartbeats without auth or chat", () => {
+    const { bridge, mudClient, timers } = createHarness({ mudEncrypted: false, config: {
+        mud_tls: false, mud_auth_token: "", channels: [
+            { discord: "discord-1", mud: "petition", direction: "mud_to_discord" }
+        ]
+    } });
+    bridge.start();
+    mudClient.completeConnection();
+    bridge.handleDiscordMessage(createDiscordMessage());
+    assert.deepEqual(mudClient.writes, []);
+    timers.intervals[0].callback();
+    assert.deepEqual(parsedWrites(mudClient), [{ channel: "heartbeat", name: "bot", message: "ping" }]);
+});
+
 test("remote connections that do not negotiate TLS are closed", () => {
     const { bridge, errors, healthServer, mudClient } = createHarness({
         config: { mud_ip: "mud.example.com", mud_tls: true },

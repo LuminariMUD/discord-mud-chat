@@ -1,6 +1,7 @@
 const { default: emojiRegexText } = require("emoji-regex");
 const { StringDecoder } = require("node:string_decoder");
 const { isLoopbackHost, validateMudTransportConfig } = require("./mud-client");
+const { validateChannelDirections } = require("../config/load-config");
 
 const HEARTBEAT_INTERVAL_MS = 240000;
 const RATE_LIMIT_RETENTION_MS = 10000;
@@ -29,6 +30,7 @@ class ChatBridge {
         emojiRegexFactory = emojiRegexText
     }) {
         validateMudTransportConfig(config);
+        validateChannelDirections(config);
 
         this.config = config;
         this.discordClient = discordClient;
@@ -302,6 +304,7 @@ class ChatBridge {
 
         const mappedChannel = this.config.channels.find(channel => message.channel.id === channel.discord);
         if (!mappedChannel) return false;
+        if (mappedChannel.direction === "mud_to_discord") return false;
         if (!message.member || message.member.user.bot === true) return false;
 
         let messageText = message.content.replace(/@(everyone|here)/gi, "[mention removed]");
