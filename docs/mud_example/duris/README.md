@@ -2,7 +2,7 @@
 
 These four `net/discord_*` files are byte-for-byte copies of the production
 Duris modules at tested revision
-`68c5e7d1beda17ad47a51dc10c3d07d08b8ba11f`. They use Duris's **C++20** build,
+`742c38136965245cdb69679cdf1a58d594b074c6`. They use Duris's **C++20** build,
 cJSON/crypto libraries, character types and ANSI/Unicode utilities. Do not mix
 these with the generic C89 sample one directory above.
 
@@ -38,6 +38,11 @@ concealed names. It consumes auth/heartbeat controls and discards all incoming
 chat. Its loopback listener is separate from gameplay ports. Follow the
 [Duris operator guide](../../duris.md) for configuration and rollback; the staff
 Discord audience is enforced by Discord permissions.
+Clients have 10 seconds to authenticate when a token is configured, then must
+send a valid heartbeat every 300 seconds (Node sends one every 240 seconds).
+Tokenless clients also have the heartbeat deadline. Expiry uses monotonic time,
+closes the client, and discards queued output; unauthenticated or partial input
+cannot extend the deadline or keep the sole client slot indefinitely.
 
 ## Check drift and execute the copied modules
 

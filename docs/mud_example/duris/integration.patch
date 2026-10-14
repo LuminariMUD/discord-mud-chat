@@ -63,7 +63,7 @@ index 7eecccb52..ff8592c49 100644
  		{
  			snprintf(
 diff --git a/src/cmd/actwiz.c b/src/cmd/actwiz.c
-index 09cf00503..a476b800a 100644
+index 09cf00503..be7f937ec 100644
 --- a/src/cmd/actwiz.c
 +++ b/src/cmd/actwiz.c
 @@ -9,6 +9,7 @@
@@ -74,7 +74,84 @@ index 09cf00503..a476b800a 100644
  #include "account/creation_availability_config.h"
  #include "net/comm.h"
  #include "world/db.h"
-@@ -7622,6 +7623,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
+@@ -6551,44 +6552,41 @@ void do_vis(P_char ch, char *argument, int /*cmd*/)
+ 
+ namespace
+ {
+-	struct demote_context
+-	{
+-		uint32_t administrator_pid;
+-	};
++struct demote_context
++{
++	uint32_t administrator_pid;
++};
+ 
+-	void demote_committed(P_char victim, bool committed, const epic_command_result &,
+-			      unsigned int, const uint8_t *raw_context, size_t context_size)
++void demote_committed(P_char victim, bool committed, const epic_command_result &, unsigned int,
++		      const uint8_t *raw_context, size_t context_size)
++{
++	if (!committed)
+ 	{
+-		if (!committed)
+-		{
+-			send_to_char(
+-				"The administrative epic reset failed; demotion was not applied.\n",
+-				victim);
+-			return;
+-		}
+-		for (int skill = 0; skill < MAX_SKILLS; ++skill)
+-			victim->only.pc->skills[skill].learned = 0;
+-		NewbySkillSet(victim, TRUE);
+-		victim->points.max_mana = 0;
+-		victim->points.max_vitality = 0;
+-		victim->specials.conditions[0] = 24;
+-		victim->specials.conditions[1] = 24;
+-		victim->specials.conditions[2] = 0;
+-		do_start(victim, 0);
+-		send_to_char("You have just been demoted to level one... oh well.\n", victim);
+-		logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset",
+-		      GET_NAME(victim));
+-		if (context_size == sizeof(demote_context))
+-		{
+-			demote_context context = {};
+-			memcpy(&context, raw_context, sizeof(context));
+-			P_char administrator = find_player_by_pid(context.administrator_pid);
+-			if (administrator)
+-				send_to_char(
+-					"The demotion and epic reset committed successfully.\n",
+-					administrator);
+-		}
++		send_to_char("The administrative epic reset failed; demotion was not applied.\n",
++			     victim);
++		return;
++	}
++	for (int skill = 0; skill < MAX_SKILLS; ++skill)
++		victim->only.pc->skills[skill].learned = 0;
++	NewbySkillSet(victim, TRUE);
++	victim->points.max_mana = 0;
++	victim->points.max_vitality = 0;
++	victim->specials.conditions[0] = 24;
++	victim->specials.conditions[1] = 24;
++	victim->specials.conditions[2] = 0;
++	do_start(victim, 0);
++	send_to_char("You have just been demoted to level one... oh well.\n", victim);
++	logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset", GET_NAME(victim));
++	if (context_size == sizeof(demote_context))
++	{
++		demote_context context = {};
++		memcpy(&context, raw_context, sizeof(context));
++		P_char administrator = find_player_by_pid(context.administrator_pid);
++		if (administrator)
++			send_to_char("The demotion and epic reset committed successfully.\n",
++				     administrator);
+ 	}
++}
+ } // namespace
+ 
+ void do_demote(P_char ch, char *argument, int /*cmd*/)
+@@ -7622,6 +7620,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
  		send_to_char("That person can't hear you.\n", ch);
  		return;
  	}
@@ -83,7 +160,7 @@ index 09cf00503..a476b800a 100644
  	{
  		if (IS_SET(ch->specials.act, PLR_ECHO))
 diff --git a/src/net/comm.c b/src/net/comm.c
-index c55c6a0d9..c222aa8a5 100644
+index c55c6a0d9..0249e3247 100644
 --- a/src/net/comm.c
 +++ b/src/net/comm.c
 @@ -30,6 +30,7 @@
@@ -94,43 +171,7 @@ index c55c6a0d9..c222aa8a5 100644
  #include "net/session_input.h"
  #include "net/output_style.h"
  #include "net/chat_presentation.h"
-@@ -1294,8 +1295,9 @@ static void prepare_descriptor_latency_event(command_latency_event *event,
- 
- class scoped_command_latency
- {
--    public:
--	scoped_command_latency(command_latency_tracker *tracker, const command_latency_event *event)
-+public:
-+	scoped_command_latency(command_latency_tracker * tracker,
-+			       const command_latency_event *event)
- 		: tracker_(tracker)
- 		, event_(event)
- 		, started_us_(loop_monotonic_us())
-@@ -1303,7 +1305,10 @@ class scoped_command_latency
- 	{
- 	}
- 
--	~scoped_command_latency() { finish(); }
-+	~scoped_command_latency()
-+	{
-+		finish();
-+	}
- 
- 	void finish()
- 	{
-@@ -1315,9 +1320,9 @@ class scoped_command_latency
- 	}
- 
- 	scoped_command_latency(const scoped_command_latency &) = delete;
--	scoped_command_latency &operator=(const scoped_command_latency &) = delete;
-+	scoped_command_latency &operator = (const scoped_command_latency &) = delete;
- 
--    private:
-+private:
- 	command_latency_tracker *tracker_;
- 	const command_latency_event *event_;
- 	uint64_t started_us_;
-@@ -1512,6 +1517,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
+@@ -1512,6 +1513,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
  	//PROFILE_END(process_signal_shutdown_pending);
  	persistence_log_poll();
  	checkpointing();
@@ -153,7 +194,7 @@ index c55c6a0d9..c222aa8a5 100644
  
  	if ((last_desc_per_hour_reset + 3600) <= time(0))
  	{
-@@ -1938,6 +1959,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
+@@ -1938,6 +1955,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
  
  static void run_output_phase(game_loop_pulse_context &ctx)
  {
@@ -161,7 +202,7 @@ index c55c6a0d9..c222aa8a5 100644
  	const uint64_t loop_tick = ctx.loop_tick;
  	P_desc point, next_point;
  
-@@ -2595,6 +2617,11 @@ void game_loop(int port, int sslport)
+@@ -2595,6 +2613,11 @@ void game_loop(int port, int sslport)
  		}
  	}
  
@@ -173,7 +214,7 @@ index c55c6a0d9..c222aa8a5 100644
  	// store in file-scope statics for copyover access
  	mother_desc = s;
  	mother_desc_ssl = S;
-@@ -2682,6 +2709,8 @@ resume_game_loop:
+@@ -2682,6 +2705,8 @@ resume_game_loop:
  		return;
  	}
  
@@ -182,12 +223,3 @@ index c55c6a0d9..c222aa8a5 100644
  	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
  	// failure is reported, never a reason to keep running. The writer gets 30 s for
  	// what is queued; run_the_game() names whatever it could not write once nothing
-@@ -3475,7 +3504,7 @@ void close_socket(struct descriptor_data *d)
- 		FREE(d->storage);
- 
- #endif
--		/* I really don't wanna crash it  */
-+	/* I really don't wanna crash it  */
- #ifdef USE_ACCOUNT
- 	if (d->account)
- 		d->account = free_account(d->account);

@@ -20,39 +20,42 @@ if os.environ.get("CODEX_PROXY_CERT"):
     build += ["--secret", f"id=proxy_ca,src={os.environ['CODEX_PROXY_CERT']}"]
 build += ["."]
 subprocess.run(build, cwd=ROOT, env=env, check=True)
-with socket.socket() as listener:
-    listener.bind(("127.0.0.1", 0))
-    listener.listen(1)
-    listener.settimeout(20)
-    captured = []
-    errors = []
+try:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        listener.settimeout(20)
+        captured = []
+        errors = []
 
-    def peer():
+        def peer():
+            try:
+                connection, _ = listener.accept()
+                with connection:
+                    connection.settimeout(15)
+                    record = dict(channel="petition", name="Fixture", message="Network namespace 你好 🔥", emoted=0)
+                    connection.sendall((json.dumps(record, ensure_ascii=False) + "\n").encode())
+                    while data := connection.recv(4096):
+                        captured.append(data)
+            except Exception as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=peer, daemon=True)
+        thread.start()
+        name = f"mud-bridge-smoke-{os.getpid()}"
+        command = [*DOCKER, "run", "--rm", "--name", name, "--network", "host",
+                   "--mount", f"type=bind,src={ROOT / 'scripts/testing/deployment-smoke.js'},dst=/smoke.js,readonly",
+                   "-e", "BRIDGE_MODULE_ROOT=/app", "-e", "HEALTH_PORT=0",
+                   "-e", f"SMOKE_MUD_PORT={listener.getsockname()[1]}",
+                   image, "node", "/smoke.js"]
         try:
-            connection, _ = listener.accept()
-            with connection:
-                connection.settimeout(15)
-                record = dict(channel="petition", name="Fixture", message="Network namespace 你好 🔥", emoted=0)
-                connection.sendall((json.dumps(record, ensure_ascii=False) + "\n").encode())
-                while data := connection.recv(4096):
-                    captured.append(data)
-        except Exception as error:
-            errors.append(error)
-
-    thread = threading.Thread(target=peer, daemon=True)
-    thread.start()
-    name = f"mud-bridge-smoke-{os.getpid()}"
-    command = [*DOCKER, "run", "--rm", "--name", name, "--network", "host",
-               "--mount", f"type=bind,src={ROOT / 'scripts/testing/deployment-smoke.js'},dst=/smoke.js,readonly",
-               "-e", "BRIDGE_MODULE_ROOT=/app", "-e", "HEALTH_PORT=0",
-               "-e", f"SMOKE_MUD_PORT={listener.getsockname()[1]}",
-               image, "node", "/smoke.js"]
-    try:
-        subprocess.run(command, cwd=ROOT, env=env, check=True, timeout=30)
-        thread.join(timeout=5)
-        assert not thread.is_alive(), "container did not close its MUD connection"
-        assert not errors, errors
-        assert captured == [], "one-way Discord post wrote chat into the fixture"
-    finally:
-        subprocess.run([*DOCKER, "rm", "-f", name], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(command, cwd=ROOT, env=env, check=True, timeout=30)
+            thread.join(timeout=5)
+            assert not thread.is_alive(), "container did not close its MUD connection"
+            assert not errors, errors
+            assert captured == [], "one-way Discord post wrote chat into the fixture"
+        finally:
+            subprocess.run([*DOCKER, "rm", "-f", name], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+finally:
+    subprocess.run([*DOCKER, "image", "rm", image], env=env, check=True)
 print("Production image, host-loopback MUD access, health and one-way relay checks passed")

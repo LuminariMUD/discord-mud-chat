@@ -1,5 +1,6 @@
 /* Copyright (C) 2025 LuminariMUD. See the repository license.
  * Generic Linux/POSIX C89 sample; requires cJSON. See README.md. */
+#define _POSIX_C_SOURCE 200809L
 #include "discord_bridge.h"
 #include <cjson/cJSON.h>
 #include <arpa/inet.h>
@@ -11,10 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 #define PULSE_BYTES (64UL * 1024UL)
 #define PULSE_CALLS 32
+#define AUTHENTICATION_TIMEOUT 10
+#define HEARTBEAT_TIMEOUT 300 /* Node sends a ping every 240 seconds. */
 
 struct output_record {
     char *wire;
@@ -22,6 +26,7 @@ struct output_record {
     struct output_record *next;
 };
 static int listener = -1, client = -1;
+static time_t client_deadline = 0;
 static char *input = NULL, *token = NULL;
 static size_t used = 0, record_limit = DISCORD_MAX_RECORD_BYTES;
 static int discarding = 0;
@@ -29,6 +34,12 @@ static struct output_record *front = NULL, *back = NULL;
 static struct discord_bridge_status status;
 static discord_chat_callback on_chat = NULL;
 static void *chat_context = NULL;
+
+static time_t monotonic_seconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return now.tv_sec;
+}
 
 static void increment(unsigned long *value) {
     if (*value < ULONG_MAX) ++*value;
@@ -159,6 +170,31 @@ static int token_matches(const char *candidate) {
     return difference == 0;
 }
 
+/* cJSON decodes escapes but does not validate literal UTF-8 in JSON strings. */
+static int valid_utf8(const char *text) {
+    const unsigned char *p = (const unsigned char *)text;
+    unsigned long codepoint, minimum;
+    unsigned int remaining;
+    while (*p) {
+        if (*p < 0x80) { ++p; continue; }
+        if (*p >= 0xc2 && *p <= 0xdf) {
+            codepoint = *p & 0x1f; minimum = 0x80; remaining = 1;
+        } else if (*p >= 0xe0 && *p <= 0xef) {
+            codepoint = *p & 0x0f; minimum = 0x800; remaining = 2;
+        } else if (*p >= 0xf0 && *p <= 0xf4) {
+            codepoint = *p & 0x07; minimum = 0x10000; remaining = 3;
+        } else return 0;
+        ++p;
+        while (remaining--) {
+            if (*p < 0x80 || *p > 0xbf) return 0;
+            codepoint = (codepoint << 6) | (*p++ & 0x3f);
+        }
+        if (codepoint < minimum || codepoint > 0x10ffff ||
+            (codepoint >= 0xd800 && codepoint <= 0xdfff)) return 0;
+    }
+    return 1;
+}
+
 static void consume_record(void) {
     cJSON *record;
     const cJSON *channel, *name, *message, *emoted;
@@ -179,17 +215,22 @@ static void consume_record(void) {
     name = cJSON_GetObjectItemCaseSensitive(record, "name");
     message = cJSON_GetObjectItemCaseSensitive(record, "message");
     emoted = cJSON_GetObjectItemCaseSensitive(record, "emoted");
-    if (!cJSON_IsObject(record) || !cJSON_IsString(channel) || !cJSON_IsString(message)) {
+    if (!cJSON_IsObject(record) || !cJSON_IsString(channel) || !cJSON_IsString(message) ||
+        !valid_utf8(channel->valuestring) || !valid_utf8(message->valuestring)) {
         increment(&status.rejected);
     } else if (strcmp(channel->valuestring, "auth") == 0) {
-        if (!*token || token_matches(message->valuestring)) status.authenticated = 1;
+        if (!*token || token_matches(message->valuestring)) {
+            status.authenticated = 1;
+            client_deadline = monotonic_seconds() + HEARTBEAT_TIMEOUT;
+        }
         else {
             increment(&status.auth_failures);
             disconnect_client();
         }
     } else if (strcmp(channel->valuestring, "heartbeat") == 0) {
         if (strcmp(message->valuestring, "ping") != 0) increment(&status.rejected);
-    } else if (!status.authenticated || !cJSON_IsString(name) ||
+        else if (status.authenticated) client_deadline = monotonic_seconds() + HEARTBEAT_TIMEOUT;
+    } else if (!status.authenticated || !cJSON_IsString(name) || !valid_utf8(name->valuestring) ||
                (emoted && (!cJSON_IsNumber(emoted) ||
                 emoted->valuedouble > DBL_MAX || emoted->valuedouble < -DBL_MAX)) || !on_chat) {
         increment(&status.rejected);
@@ -207,6 +248,8 @@ void process_discord_input(void) {
     ssize_t bytes;
     int ready, attempts, accepted;
     if (listener < 0) return;
+    /* Run before poll: silence and partial/rejected input cannot renew a lease. */
+    if (client >= 0 && monotonic_seconds() >= client_deadline) disconnect_client();
     descriptors[0].fd = listener; descriptors[0].events = POLLIN; descriptors[0].revents = 0;
     descriptors[1].fd = client; descriptors[1].events = POLLIN; descriptors[1].revents = 0;
     ready = poll(descriptors, 2, 0);
@@ -254,6 +297,8 @@ void process_discord_input(void) {
             client = accepted;
             status.connected = 1;
             status.authenticated = !*token;
+            client_deadline = monotonic_seconds() +
+                (status.authenticated ? HEARTBEAT_TIMEOUT : AUTHENTICATION_TIMEOUT);
         }
     }
 }

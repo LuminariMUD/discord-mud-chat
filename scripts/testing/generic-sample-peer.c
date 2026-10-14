@@ -9,12 +9,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 static int write_mode, read_mode, send_calls, recv_calls;
 static int max_send_calls, max_recv_calls;
 static size_t sent_bytes, read_bytes, max_sent_bytes, max_read_bytes;
 static unsigned long send_sequence;
+static time_t clock_offset;
+
+int __real_clock_gettime(clockid_t clock, struct timespec *now);
+int __wrap_clock_gettime(clockid_t clock, struct timespec *now) {
+    if (clock != CLOCK_MONOTONIC) return __real_clock_gettime(clock, now);
+    now->tv_sec = 1000 + clock_offset;
+    now->tv_nsec = 0;
+    return 0;
+}
 
 ssize_t __real_send(int fd, const void *data, size_t bytes, int flags);
 ssize_t __real_recv(int fd, void *data, size_t bytes, int flags);
@@ -104,6 +114,10 @@ int main(int argc, char **argv) {
             write_mode = cJSON_GetObjectItemCaseSensitive(request, "value")->valueint;
         else if (strcmp(action->valuestring, "read_mode") == 0)
             read_mode = cJSON_GetObjectItemCaseSensitive(request, "value")->valueint;
+        else if (strcmp(action->valuestring, "advance_time") == 0) {
+            clock_offset += cJSON_GetObjectItemCaseSensitive(request, "value")->valueint;
+            pulse(paused);
+        }
         else if (strcmp(action->valuestring, "restart") == 0) assert(init_discord_bridge(&config));
         else if (strcmp(action->valuestring, "shutdown") == 0) shutdown_discord_bridge();
         else assert(strcmp(action->valuestring, "status") == 0 || strcmp(action->valuestring, "quit") == 0);

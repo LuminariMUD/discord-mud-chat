@@ -68,12 +68,20 @@ quotes and backslashes; cJSON escapes controls inside JSON. Your game owns color
 stripping, terminal-control removal, and visibility/redaction. Embedded raw or
 decoded NULs are rejected on input because cJSON represents strings as C strings.
 No character truncation or partial JSON is used to fit the record limit.
+Malformed UTF-8, including overlong sequences, surrogates and values above
+U+10FFFF, is rejected in every chat field before invoking the adapter.
 
 The listener binds **127.0.0.1 only**, accepts one client, and marks both sockets
 nonblocking and close-on-exec. Local plaintext must have no Node auth token.
 Remote/token use needs a certificate-validated TLS terminator forwarding to this
 loopback listener; protect that host/backend boundary. Do not expose this sample
 as remote plaintext or disable Node certificate verification.
+Token-protected connections must authenticate within 10 seconds. Authenticated
+connections (including tokenless loopback clients) must send a valid heartbeat
+within 300 seconds; the Node bridge sends one every 240 seconds. These deadlines
+use monotonic time. Partial, invalid and unauthenticated heartbeat records do not
+extend them. Expiry closes the client and drops queued output so another client
+can connect without inheriting stale data.
 
 Limits are 128..1,048,576 UTF-8 bytes per record before LF, 256 queued events,
 and 4,194,308 retained wire bytes. The complete front event still counts during

@@ -108,6 +108,23 @@ def run(binary):
         assert peer.receive() == marker
         stats = peer.until(lambda s: s["rejected"] == before["rejected"] + len(bad) + 1)
         assert stats["max_read_bytes"] <= 65536 and stats["max_recv_calls"] <= 32
+        # cJSON accepts these raw bytes; the adapter must never see malformed UTF-8.
+        malformed = [b"\x80", b"\xc0\xaf", b"\xc1\xbf", b"\xc2", b"\xe0\xa0",
+                     b"\xf0\x90\x80", b"\xe0\x80\x80", b"\xed\xa0\x80",
+                     b"\xf0\x80\x80\x80", b"\xf4\x90\x80\x80", b"\xf5\x80\x80\x80", b"\xff"]
+        before = peer.rpc()
+        for field in ("channel", "name", "message"):
+            for value in malformed:
+                sock.sendall(wire(dict(marker, **{field: "RAW"})).replace(b"RAW", value))
+        sock.sendall(wire(marker))
+        assert peer.receive() == marker
+        stats = peer.until(lambda s: s["rejected"] == before["rejected"] + 3 * len(malformed))
+        assert stats["received"] == before["received"] + 1
+        boundaries = "\u007f\u0080\u07ff\u0800\ud7ff\ue000\uffff\U00010000\U0010ffff"
+        for field in ("channel", "name", "message"):
+            valid = dict(marker, **{field: boundaries})
+            sock.sendall(wire(valid))
+            assert peer.receive() == valid
         sock.sendall(wire(dict(marker, channel="adapter-rejected")))
         peer.until(lambda s: s["rejected"] == stats["rejected"] + 1)
         # Exact and one-byte-over output bounds, including serializer expansion.
@@ -217,6 +234,43 @@ def run(binary):
         assert peer.receive() == marker
         assert peer.rpc()["rejected"] == 1
 
+    # Advance a wrapped monotonic clock, not wall time or production deadlines.
+    for token in (None, "fixture-token"):
+        with Peer(binary, token=token) as peer:
+            sock = peer.connect()
+            if token:
+                assert peer.rpc("advance_time", value=9)["connected"]
+                sock.sendall(wire(fixtures["controls"][1]) + b'bad\n{"channel":"partial')
+                peer.until(lambda s: s["rejected"] == 1)
+                assert not peer.rpc("advance_time", value=1)["connected"]
+                assert sock.recv(1) == b""
+                sock.close()
+                sock = peer.connect()
+                sock.sendall(wire(fixtures["controls"][0]))
+                peer.until(lambda s: s["authenticated"])
+            assert peer.rpc("advance_time", value=299)["connected"]
+            before = peer.rpc()
+            sock.sendall(wire(fixtures["controls"][1]) + b"bad\n")
+            peer.until(lambda s: s["rejected"] == before["rejected"] + 1)
+            assert peer.rpc("advance_time", value=299)["connected"]
+            peer.rpc("pause")
+            assert peer.rpc("send", record=marker)["queued_events"] == 1
+            sock.sendall(b'bad\n{"channel":"stale')
+            peer.until(lambda s: s["rejected"] == before["rejected"] + 2)
+            expired = peer.rpc("advance_time", value=1)
+            assert not expired["connected"] and expired["queued_events"] == 0
+            assert expired["dropped"] == before["dropped"] + 1
+            assert sock.recv(1) == b""
+            sock.close()
+            sock = peer.connect()
+            if token:
+                sock.sendall(wire(fixtures["controls"][0]))
+                peer.until(lambda s: s["authenticated"])
+            peer.rpc("resume")
+            sock.sendall(wire(marker))
+            assert peer.receive() == marker
+            assert peer.pending == b""
+
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="generic-mud-sample-") as temp:
@@ -225,6 +279,7 @@ if __name__ == "__main__":
         subprocess.run(["cc", "-std=c89", "-pedantic", "-Wall", "-Wextra", "-Werror", "-g", *flags,
                         "-Idocs/mud_example", "docs/mud_example/discord_bridge.c",
                         "scripts/testing/generic-sample-peer.c", "-lcjson",
-                        "-Wl,--wrap=send", "-Wl,--wrap=recv", "-o", str(binary)], check=True, cwd=ROOT)
+                        "-Wl,--wrap=send", "-Wl,--wrap=recv", "-Wl,--wrap=clock_gettime",
+                        "-o", str(binary)], check=True, cwd=ROOT)
         run(binary)
     print("Generic C89 sample protocol, bounds, faults and lifecycle checks passed")

@@ -12,158 +12,175 @@
 #include <openssl/crypto.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace
 {
-	constexpr std::size_t maximum_record_bytes = 1024 * 1024;
-	constexpr std::size_t maximum_queue_bytes = 4 * (maximum_record_bytes + 1);
-	constexpr std::size_t maximum_queue_events = 256;
-	constexpr std::size_t pulse_bytes = 64 * 1024;
-	constexpr unsigned pulse_calls = 32;
-	constexpr unsigned pulse_accepts = 4;
+constexpr std::size_t maximum_record_bytes = 1024 * 1024;
+constexpr std::size_t maximum_queue_bytes = 4 * (maximum_record_bytes + 1);
+constexpr std::size_t maximum_queue_events = 256;
+constexpr std::size_t pulse_bytes = 64 * 1024;
+constexpr unsigned pulse_calls = 32;
+constexpr unsigned pulse_accepts = 4;
+constexpr time_t authentication_timeout = 10;
+constexpr time_t heartbeat_timeout = 300; // Node sends a ping every 240 seconds.
 
-	int listener = -1;
-	int client = -1;
-	std::size_t record_limit = maximum_record_bytes;
-	std::string token;
-	std::string input;
-	bool discarding = false;
-	std::deque<std::string> output;
-	std::size_t output_offset = 0;
-	discord_bridge_status status;
+int listener = -1;
+int client = -1;
+time_t client_deadline = 0;
+std::size_t record_limit = maximum_record_bytes;
+std::string token;
+std::string input;
+bool discarding = false;
+std::deque<std::string> output;
+std::size_t output_offset = 0;
+discord_bridge_status status;
 
-	bool would_block()
-	{
-		if (errno == EAGAIN)
-			return true;
+time_t monotonic_seconds()
+{
+	timespec now{};
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return now.tv_sec;
+}
+
+bool would_block()
+{
+	if (errno == EAGAIN)
+		return true;
 #if EWOULDBLOCK != EAGAIN
-		if (errno == EWOULDBLOCK)
-			return true;
+	if (errno == EWOULDBLOCK)
+		return true;
 #endif
+	return false;
+}
+
+void count(std::uint64_t &counter, std::size_t amount = 1)
+{
+	counter += std::min<std::uint64_t>(amount, UINT64_MAX - counter);
+}
+
+void disconnect_client()
+{
+	if (client >= 0)
+		close(client);
+	client = -1;
+	count(status.dropped_events, output.size());
+	output.clear();
+	output_offset = 0;
+	input.clear();
+	discarding = false;
+	status.connected = false;
+	status.authenticated = false;
+	status.queued_bytes = 0;
+	status.queued_events = 0;
+}
+
+bool number_setting(const char *name, unsigned long fallback, unsigned long minimum,
+		    unsigned long maximum, unsigned long &value)
+{
+	const char *text = getenv(name);
+	value = fallback;
+	if (!text || !*text)
+		return true;
+	if (*text < '0' || *text > '9')
 		return false;
-	}
+	char *end = nullptr;
+	errno = 0;
+	value = strtoul(text, &end, 10);
+	return errno == 0 && *end == '\0' && value >= minimum && value <= maximum;
+}
 
-	void count(std::uint64_t &counter, std::size_t amount = 1)
+void consume_record()
+{
+	if (input.find_first_not_of(" \t\r") == std::string::npos)
+		return;
+	// cJSON represents strings as C strings. Reject decoded NULs rather than
+	// authenticating a prefix or treating "heartbeat\u0000chat" as a control.
+	bool has_nul = input.find('\0') != std::string::npos;
+	for (std::size_t i = 0; i < input.size(); ++i)
+		if (input[i] == '\\')
+		{
+			has_nul = has_nul || input.compare(i, 6, "\\u0000") == 0;
+			++i;
+		}
+	cJSON *record = !has_nul ? cJSON_ParseWithOpts(input.c_str(), nullptr, true) : nullptr;
+	const cJSON *channel = cJSON_GetObjectItemCaseSensitive(record, "channel");
+	const cJSON *message = cJSON_GetObjectItemCaseSensitive(record, "message");
+	const bool valid = cJSON_IsObject(record) && cJSON_IsString(channel) &&
+			   cJSON_IsString(message);
+	if (valid && strcmp(channel->valuestring, "auth") == 0 && !token.empty())
 	{
-		counter += std::min<std::uint64_t>(amount, UINT64_MAX - counter);
+		if (strlen(message->valuestring) == token.size() &&
+		    CRYPTO_memcmp(message->valuestring, token.data(), token.size()) == 0)
+		{
+			status.authenticated = true;
+			client_deadline = monotonic_seconds() + heartbeat_timeout;
+		}
+		else
+		{
+			count(status.auth_failures);
+			disconnect_client();
+		}
 	}
-
-	void disconnect_client()
+	else if (valid && strcmp(channel->valuestring, "heartbeat") == 0 &&
+		 strcmp(message->valuestring, "ping") == 0)
 	{
-		if (client >= 0)
-			close(client);
-		client = -1;
-		count(status.dropped_events, output.size());
-		output.clear();
-		output_offset = 0;
-		input.clear();
-		discarding = false;
-		status.connected = false;
-		status.authenticated = false;
-		status.queued_bytes = 0;
-		status.queued_events = 0;
+		if (status.authenticated)
+			client_deadline = monotonic_seconds() + heartbeat_timeout;
 	}
-
-	bool number_setting(const char *name, unsigned long fallback, unsigned long minimum,
-			    unsigned long maximum, unsigned long &value)
+	else
 	{
-		const char *text = getenv(name);
-		value = fallback;
-		if (!text || !*text)
-			return true;
-		if (*text < '0' || *text > '9')
-			return false;
-		char *end = nullptr;
-		errno = 0;
-		value = strtoul(text, &end, 10);
-		return errno == 0 && *end == '\0' && value >= minimum && value <= maximum;
+		// Includes all incoming chat and unknown controls. There is no dispatcher.
+		count(status.rejected_records);
 	}
+	cJSON_Delete(record);
+}
 
-	void consume_record()
+void read_client()
+{
+	char buffer[4096];
+	std::size_t remaining = pulse_bytes;
+	for (unsigned calls = 0; client >= 0 && remaining && calls < pulse_calls; ++calls)
 	{
-		if (input.find_first_not_of(" \t\r") == std::string::npos)
+		const ssize_t bytes = recv(client, buffer, std::min(sizeof(buffer), remaining), 0);
+		if (bytes < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			if (!would_block())
+				disconnect_client();
 			return;
-		// cJSON represents strings as C strings. Reject decoded NULs rather than
-		// authenticating a prefix or treating "heartbeat\u0000chat" as a control.
-		bool has_nul = input.find('\0') != std::string::npos;
-		for (std::size_t i = 0; i < input.size(); ++i)
-			if (input[i] == '\\')
-			{
-				has_nul = has_nul || input.compare(i, 6, "\\u0000") == 0;
-				++i;
-			}
-		cJSON *record = !has_nul ? cJSON_ParseWithOpts(input.c_str(), nullptr, true) :
-					   nullptr;
-		const cJSON *channel = cJSON_GetObjectItemCaseSensitive(record, "channel");
-		const cJSON *message = cJSON_GetObjectItemCaseSensitive(record, "message");
-		const bool valid = cJSON_IsObject(record) && cJSON_IsString(channel) &&
-				   cJSON_IsString(message);
-		if (valid && strcmp(channel->valuestring, "auth") == 0 && !token.empty())
-		{
-			if (strlen(message->valuestring) == token.size() &&
-			    CRYPTO_memcmp(message->valuestring, token.data(), token.size()) == 0)
-				status.authenticated = true;
-			else
-			{
-				count(status.auth_failures);
-				disconnect_client();
-			}
 		}
-		else if (!(valid && strcmp(channel->valuestring, "heartbeat") == 0 &&
-			   strcmp(message->valuestring, "ping") == 0))
+		if (bytes == 0)
 		{
-			// Includes all incoming chat and unknown controls. There is no dispatcher.
-			count(status.rejected_records);
+			disconnect_client();
+			return;
 		}
-		cJSON_Delete(record);
-	}
-
-	void read_client()
-	{
-		char buffer[4096];
-		std::size_t remaining = pulse_bytes;
-		for (unsigned calls = 0; client >= 0 && remaining && calls < pulse_calls; ++calls)
+		remaining -= bytes;
+		for (ssize_t i = 0; i < bytes && client >= 0; ++i)
 		{
-			const ssize_t bytes =
-				recv(client, buffer, std::min(sizeof(buffer), remaining), 0);
-			if (bytes < 0)
+			if (buffer[i] == '\n')
 			{
-				if (errno == EINTR)
-					continue;
-				if (!would_block())
-					disconnect_client();
-				return;
+				if (!discarding)
+					consume_record();
+				input.clear();
+				discarding = false;
 			}
-			if (bytes == 0)
+			else if (!discarding)
 			{
-				disconnect_client();
-				return;
-			}
-			remaining -= bytes;
-			for (ssize_t i = 0; i < bytes && client >= 0; ++i)
-			{
-				if (buffer[i] == '\n')
+				if (input.size() == record_limit)
 				{
-					if (!discarding)
-						consume_record();
+					count(status.rejected_records);
 					input.clear();
-					discarding = false;
+					discarding = true;
 				}
-				else if (!discarding)
-				{
-					if (input.size() == record_limit)
-					{
-						count(status.rejected_records);
-						input.clear();
-						discarding = true;
-					}
-					else
-						input.push_back(buffer[i]);
-				}
+				else
+					input.push_back(buffer[i]);
 			}
 		}
 	}
+}
 } // namespace
 
 bool discord_bridge_init()
@@ -219,6 +236,10 @@ void discord_bridge_poll()
 {
 	if (listener < 0)
 		return;
+	// Check even when poll has no readable descriptors. Unauthenticated traffic
+	// and incomplete/rejected records must never extend the client's deadline.
+	if (client >= 0 && monotonic_seconds() >= client_deadline)
+		disconnect_client();
 	// poll avoids FD_SET entirely, so descriptors above FD_SETSIZE are safe.
 	pollfd descriptors[] = { { listener, POLLIN, 0 }, { client, POLLIN, 0 } };
 	const int ready = poll(descriptors, 2, 0);
@@ -258,6 +279,9 @@ void discord_bridge_poll()
 			client = accepted;
 			status.connected = true;
 			status.authenticated = token.empty();
+			client_deadline =
+				monotonic_seconds() +
+				(status.authenticated ? heartbeat_timeout : authentication_timeout);
 		}
 	}
 }
