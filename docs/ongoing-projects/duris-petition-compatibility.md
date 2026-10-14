@@ -1,9 +1,9 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: in progress; Phases 0-4 implemented and verified at the command boundary;
-Phase 5 artifacts and local/PM2 checks are published. Full game/save/copyover
-acceptance passes; its review chunk is being published. Local container
-verification remains blocked by Docker socket access.
+Status: implementation complete and published for review. Phases 0-6 implementation
+checks pass, including full game/save/copyover acceptance, local Docker execution,
+and the actual Compose health probe. Live Discord delivery and audience checks
+remain a separate, later requested deployment gate.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -26,7 +26,8 @@ this initial rollout. Additional Duris channels require a later explicit scope
 change; no dormant routes for them are needed now.
 
 This document is the implementation handoff. Checked items are completed and
-verified as recorded below; unchecked items remain required work.
+verified as recorded below; unchecked rollout items require a later deployment
+request and do not block implementation review.
 
 ## Current handoff (2026-10-14)
 
@@ -186,20 +187,35 @@ verified as recorded below; unchecked items remain required work.
   plus host-network Compose configurations parse with synthetic environment
   settings. The generic C89 sample has its own sanitizer CI job; the existing
   container job now invokes the image/host-loopback runner instead of build-only.
-- Docker verification is unavailable in this executor: the local daemon is
-  running, but `/var/run/docker.sock` is root:docker mode 0660; uid 10014 belongs
-  only to `staging`, and `sudo -n -l` denies sudo. No daemon, group, socket mode,
-  or system service was changed. The Dockerfile/build/topology gate must still
-  be run with authorized local Docker access; local socket tests or Compose
-  parsing alone do not satisfy it. The checked-in runner is
-  `python3 scripts/test-container.py`.
-- Next: publish the full-game acceptance PRs, finish the local container gate
-  after authorized Docker access is restored, then audit implementation
-  completion. Environment recovery was requested; the current runner still
-  fails at `docker info` with socket permission denied. No live Discord messages
-  were sent; permission/audience checks remain a later requested rollout gate.
+- Local Docker access was initially blocked by socket permissions. The user
+  restored it by adding `staging` to the existing `docker` group. The existing
+  task shell retains its old supplementary groups, so commands use `sg docker`;
+  a fresh login can use Docker directly. The explicit local-socket check reports
+  Docker 29.9.0 with overlay2. No daemon restart or socket-mode change was needed.
+- Local container verification now passes at bridge `0418d61`:
+  `sg docker -c 'python3 scripts/test-container.py'` builds the actual production
+  image and verifies host-loopback access, HTTP health, Unicode delivery to a
+  synthetic Discord sink, and no Discord-originated chat on the fixture socket.
+  The log is `/tmp/duris-game-local-container-restored.log` in this executor.
+- The actual Compose health command also passes with the production image.
+  An isolated temporary project copied `docker-compose.yml` and
+  `docker-compose.host.yml`, supplied only synthetic config/environment, and
+  overrode the image, command, container name and probe timing for the existing
+  deployment smoke driver. `docker compose up --no-build -d --wait` reached
+  `healthy` on a nondefault health port (58635), with one successful outbound
+  post and zero inbound posts. The unchanged configured `wget` command works
+  in this Alpine image; no probe fix was needed. The fixture was stopped and
+  removed. Local evidence: `/tmp/check-duris-compose-health.py` and
+  `/tmp/duris-compose-health.log` (temporary evidence, not required project files).
+- Next: review the published stacks in dependency order (bridge #30 through
+  #36; Duris #83 through #87). Implementation gates are complete. Leave merging
+  to review; create no release tag until preparing a tested release. Real Discord
+  delivery, the staff-only audience, and enabling a running deployment remain
+  the separate rollout checklist below. No live Discord messages were sent.
 - Phase 6 is on `codex/duris-game-acceptance` in both repositories,
-  based on bridge #35 and native #86. Native acceptance commit `8d183de95` is
+  based on bridge #35 and native #86. Bridge acceptance commit `0418d61` is
+  [PR #36](https://github.com/LuminariMUD/discord-mud-chat/pull/36), and native
+  acceptance commit `8d183de95` is
   [PR #87](https://github.com/LuminariMUD/Duris/pull/87).
   A new disposable full-game journey uses
   real account/character creation, saves/reload, failed exec and successful
@@ -237,11 +253,16 @@ verified as recorded below; unchecked items remain required work.
   passed at bridge `6bb754c`. The inspected container job log confirms the actual
   Dockerfile build, application smoke, host-loopback peer, health and one-way
   relay all passed on its Ubuntu Linux runner. Both Node jobs and the generic
-  sanitizer job passed too. This is separate from the unavailable Docker socket
-  in this executor; no local Docker success is claimed.
+  sanitizer job passed too. This is additional evidence; the local container
+  and Compose checks above independently close the local verification gate.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
   No release tags until a tested release is actually being prepared.
+- Final review audit: all seven bridge PRs (#30-#36) and all five native PRs
+  (#83-#87) are open, ready for review, and mergeable against their recorded
+  parent branches. Each stack follows the dependency order above. The final
+  handoff-only commit is included in bridge #36; production source validation
+  corresponds to bridge `0418d61` and native `8d183de95`.
 
 
 ## Evidence from the current repositories
@@ -265,9 +286,10 @@ Duris paths in this document are relative to `/home/staging/duris`.
 | Existing examples | [docs/mud_example/discord_bridge.c](../mud_example/discord_bridge.c) has hand-written JSON parsing, a 4096-byte I/O buffer, and an 8192-byte serialization buffer, despite a larger advertised record limit. Companion `.c` files contain incomplete integration fragments. | Repair and test generic examples as well as adding a Duris example. Do not present these fragments as complete compilable source files. |
 | Existing tests | [test/bridge.test.js](../../test/bridge.test.js), [test/mud-client.test.js](../../test/mud-client.test.js), and the remaining suite cover generic relay, framing, Unicode, TLS, retries, health, and shutdown. | Extend these tests; retain their assertions for existing behavior. Add executable native integration tests for Duris. |
 
-Planning originally had no build/test baseline. The execution baseline above
-now supersedes that limitation. No live MUD session or Discord delivery has
-been tested; isolated native and real-service checks remain later gates.
+Planning originally had no build/test baseline. The execution and acceptance
+evidence above now supersedes that limitation. Isolated game sessions, native
+saves/copyover and deployment fixtures pass. Production MUD operations and live
+Discord delivery have not been exercised; real-service checks remain a rollout gate.
 
 ## Design decisions and compatibility boundaries
 
@@ -512,7 +534,7 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 ### Phase 6 - Acceptance and rollout
 
-- [ ] Run the matrix below and record source revisions, commands, outcomes, and
+- [x] Run the matrix below and record source revisions, commands, outcomes, and
       any environmental limitations. A mock transport alone is insufficient for
       native listener/copyover claims.
 - [x] In an isolated local Duris test instance, confirm accepted petitions and
@@ -521,8 +543,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
       for a small real-service smoke test of both event types. Confirm an
       ordinary Discord post never reaches Duris. The planning task itself does
       not send messages or change a running service.
-- [ ] Start with one enabled endpoint and one Node process. Verify the configured
-      Discord audience and that no other channel mapping is present.
+- [ ] During that later deployment, start with one enabled endpoint and one Node
+      process. Verify the configured Discord audience and that no other channel
+      mapping is present.
 - [x] Exercise rollback: stop the Node bridge or disable the Duris endpoint and
       restart using the normal local procedure. Native petition/ptell behavior
       must continue. Keep generic deployment defaults unchanged.
@@ -532,8 +555,9 @@ fixture peer. No sample or documentation change silently enables game ingress.
 The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
 exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
 Node/native command-boundary integration, local/PM2 sample deployment and full
-isolated-game acceptance are verified. Container execution passed on an isolated
-CI Linux runner; execution in this workspace remains blocked by daemon access.
+isolated-game acceptance are verified. Container execution passes both locally
+and on an isolated CI Linux runner; the actual Compose health probe also passes
+locally with the production image and synthetic settings.
 
 ```json
 {
@@ -617,20 +641,24 @@ rollout check, not a requirement for running the generic test suite.
 
 ## Completion criteria for implementation
 
-- [ ] Duris exports accepted petitions and staff `ptell` replies to the single
+These implementation criteria are verified with synthetic Discord sinks and
+isolated game processes. The real destination's permissions and API delivery
+remain explicitly unchecked in the separate rollout checklist above.
+
+- [x] Duris exports accepted petitions and staff `ptell` replies to the single
       staff-only Discord destination, once per accepted command in normal
       operation, with correct sender/target text and no other channel exports.
-- [ ] Discord-originated chat cannot enter Duris, while authentication and
+- [x] Discord-originated chat cannot enter Duris, while authentication and
       heartbeat controls continue working.
-- [ ] Existing generic MUD configurations remain bidirectional by default and
+- [x] Existing generic MUD configurations remain bidirectional by default and
       pass independent interoperability/regression checks without Duris present.
-- [ ] Native gameplay, petition permissions, recipient behavior, logging,
+- [x] Native gameplay, petition permissions, recipient behavior, logging,
       rendering, lifecycle, and visibility remain correct with the bridge
       enabled, disabled, disconnected, and overloaded.
-- [ ] Supporting docs and both Duris/generic sample code are accurate, tested,
+- [x] Supporting docs and both Duris/generic sample code are accurate, tested,
       linked, and shipped with the changes; no unsupported MUD is advertised as
       live-tested merely because it has a name in an example.
-- [ ] Verification records distinguish unit tests, native integration tests,
+- [x] Verification records distinguish unit tests, native integration tests,
       generic interoperability, and real Discord rollout checks. Any remaining
       unverified required behavior keeps implementation completion open.
 
