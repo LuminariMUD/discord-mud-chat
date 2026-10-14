@@ -1,0 +1,30 @@
+{
+  "chat": [
+    {
+      "id": "ordinary",
+      "wire": "{\"channel\":\"gossip\",\"name\":\"Ayla\",\"message\":\"Hello\"}\n",
+      "content": "Ayla: Hello"
+    },
+    {
+      "id": "emote",
+      "wire": "{\"channel\":\"gossip\",\"name\":\"Ayla\",\"message\":\"Ayla waves.\",\"emoted\":1}\n",
+      "content": "Ayla waves."
+    },
+    {
+      "id": "arbitrary-channel-and-extra-fields",
+      "wire": "{\"channel\":\"Guild/Élite\",\"name\":\"Zoë\",\"message\":\"你好 🔥\",\"emoted\":0,\"extension\":{\"future\":true}}\n",
+      "content": "Zoë: 你好 🔥"
+    },
+    {
+      "id": "escaping-and-crlf",
+      "wire": "{\"channel\":\"gossip\",\"name\":\"Ayla\",\"message\":\"Quote \\\"hi\\\", slash \\\\, line\\nnext\\t@everyone $coin\"}\r\n",
+      "content": "Ayla: Quote \"hi\", slash \\, line\nnext\t@everyone $coin"
+    }
+  ],
+  "controls": [
+    {"channel": "auth", "name": "bot", "message": "fixture-token"},
+    {"channel": "heartbeat", "name": "bot", "message": "ping"}
+  ],
+  "invalid": ["not json\n", "{\"channel\":\n", "null\n", "[]\n", "42\n"],
+  "blank": "\n \t\r\n"
+}

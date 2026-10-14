@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { test } = require("node:test");
+const protocolFixtures = require("./fixtures/mud-protocol/records.json");
 const {
     ChatBridge,
     DEFAULT_MAX_MUD_RECORD_BYTES,
@@ -225,6 +226,74 @@ function parsedWrites(mudClient) {
 function mudRecord(value) {
     return Buffer.from(`${JSON.stringify(value)}\n`);
 }
+
+test("shared protocol fixtures survive byte-wise UTF-8 fragmentation and coalescing", async () => {
+    for (const fragmented of [true, false]) {
+        const { bridge, discordClient, healthServer } = createHarness({
+            config: { channels: [
+                { discord: "discord-1", mud: "gossip" },
+                { discord: "discord-1", mud: "Guild/Élite" }
+            ] }
+        });
+        discordClient.addChannel("discord-1");
+        const bytes = Buffer.from(protocolFixtures.blank + protocolFixtures.invalid.join("")
+            + protocolFixtures.chat.map(fixture => fixture.wire).join(""));
+        if (fragmented) {
+            for (const byte of bytes) bridge.handleMudData(Buffer.from([byte]));
+        } else {
+            bridge.handleMudData(bytes);
+        }
+        await Promise.resolve();
+        assert.deepEqual(discordClient.sentMessages.map(({ message }) => message),
+            protocolFixtures.chat.map(({ content }) => ({ content, allowedMentions: { parse: [] } })));
+        assert.equal(healthServer.mudToDiscord, protocolFixtures.chat.length);
+    }
+});
+
+test("shared Unicode record accepts the exact byte limit and recovers after overflow", () => {
+    const fixture = protocolFixtures.chat[2];
+    const bytes = Buffer.from(fixture.wire);
+    for (const fragmented of [true, false]) {
+        const { bridge, discordClient } = createHarness({ config: {
+            mud_max_record_bytes: bytes.length - 1,
+            channels: [{ discord: "discord-1", mud: "Guild/Élite" }]
+        } });
+        discordClient.addChannel("discord-1");
+        const oversized = Buffer.concat([Buffer.from(" "), bytes]);
+        if (fragmented) {
+            for (const byte of oversized) bridge.handleMudData(Buffer.from([byte]));
+        } else {
+            bridge.handleMudData(oversized);
+        }
+        assert.equal(discordClient.sentMessages.length, 0);
+        assert.equal(bridge.handleMudData(bytes), true);
+        assert.equal(discordClient.sentMessages[0].message.content, fixture.content);
+    }
+});
+
+test("shared control fixtures match auth-first and heartbeat wire writes", () => {
+    const { bridge, mudClient, timers } = createHarness({ config: { mud_auth_token: "fixture-token" } });
+    bridge.start();
+    mudClient.completeConnection();
+    timers.intervals[0].callback();
+    assert.deepEqual(parsedWrites(mudClient), protocolFixtures.controls);
+    for (const wire of mudClient.writes) assert.ok(wire.endsWith("\n"));
+});
+
+test("legacy mappings preserve case-sensitive fan-out, duplicates, and first-match ingress", () => {
+    const { bridge, discordClient, mudClient } = createHarness({ config: { channels: [
+        { discord: "discord-1", mud: "Guild/Élite" },
+        { discord: "discord-2", mud: "Guild/Élite" },
+        { discord: "discord-1", mud: "Guild/Élite" },
+        { discord: "discord-1", mud: "Other" },
+        { discord: "discord-3", mud: "guild/élite" }
+    ] } });
+    for (const id of ["discord-1", "discord-2", "discord-3"]) discordClient.addChannel(id);
+    bridge.handleMudData(Buffer.from(protocolFixtures.chat[2].wire));
+    assert.deepEqual(discordClient.sentMessages.map(({ id }) => id), ["discord-1", "discord-2", "discord-1"]);
+    assert.equal(bridge.handleDiscordMessage(createDiscordMessage()), true);
+    assert.deepEqual(parsedWrites(mudClient), [{ channel: "Guild/Élite", name: "Hero", message: "Hello from Discord" }]);
+});
 
 test("stripEmoji removes custom Discord and Unicode emoji", () => {
     assert.equal(stripEmoji("Hero🔥<:wave:12345678901234567><a:dance:12345678901234567890>"), "Hero");
