@@ -129,6 +129,8 @@ events and starts no further sends; already-issued requests may still settle.
 Delivery is best effort: no durable queue, record ID, delivery acknowledgment,
 or exactly-once guarantee exists. Failed Discord sends are logged, not replayed.
 Reconnect attempts use the fixed `mud_retry_delay`, not exponential backoff.
+The finite/infinite setting governs retries after errors; a clean close schedules
+a reconnect independently. A successful connection resets the error retry count.
 Health reports socket/Discord connection state, not authenticated delivery.
 `messages.mudToDiscord` counts resolved Discord send promises (one per successful
 part, not per source event); `messages.discordToMud` counts accepted client write

@@ -41,7 +41,7 @@ class Logger {
                 new winston.transports.File({
                     filename: path.join(this.logDir, "app.log"),
                     maxsize: 10 * 1024 * 1024, // 10MB
-                    maxFiles: 7, // Keep 7 days of logs
+                    maxFiles: 7, // Keep up to 7 files; rotation is size-based
                     tailable: true
                 }),
                 // Separate file for errors

@@ -1,7 +1,8 @@
 # Duris petition feed and MUD compatibility implementation plan
 
 Status: in progress; Phases 0-4 implemented and verified at the command boundary;
-full game/copyover acceptance and sample/deployment work remain.
+Phase 5 artifacts and local/PM2 checks are ready for review. Full game/copyover
+acceptance and container runtime verification remain.
 Date: 2026-10-14.
 
 ## Mission and agreed scope
@@ -161,8 +162,36 @@ verified as recorded below; unchecked items remain required work.
   (24.18.0 and 26.8.1), in addition to 26.11.1. These are
   production-command harnesses with synthetic players and boundary stubs;
   they do not establish full game boot/save/copyover behavior.
-- Next: complete full isolated game/copyover journeys and
-  the required native/generic samples and deployment guides. No live Discord
+- Phase 5 is on bridge `codex/mud-integration-samples`, based on
+  Phase 4c. It supplies the Duris JSON template/operator guide, byte-identical
+  native module copies and an exact integration patch with a drift/build runner.
+  The generic example is now a standalone Linux/POSIX C89/cJSON transport with
+  an explicit game callback, bounded records/queues/pulse work, whole-event
+  drops and no replay; malformed old fragments are labeled insertion recipes.
+  Generic adapters retain arbitrary channels and bidirectional capability.
+- Phase 5 verification: the generic socket/fault harness and native
+  sample hash/drift/clean-base patch/compiled-copy/Node checks all pass, normally
+  and under ASan/UBSan. Local generic and Duris sample configurations pass the
+  real application smoke test with a synthetic Discord sink. PM2 6.0.14's isolated
+  one-process startup/restart/health/graceful-stop test passes. PM2 previously
+  requested IPC shutdown although the app handles signals; its template now
+  explicitly selects fork mode and normal signal shutdown.
+- Phase 5 final checks: lint and all 111 Node tests pass on Node 26.11.1 with
+  npm 12.0.1, with 98.77% lines / 94.80% branches / 94.31% functions covered;
+  dependency audit reports zero vulnerabilities. JSON templates validate
+  through the production loader, local documentation links resolve, and default
+  plus host-network Compose configurations parse with synthetic environment
+  settings. The generic C89 sample has its own sanitizer CI job; the existing
+  container job now invokes the image/host-loopback runner instead of build-only.
+- Docker verification is unavailable in this executor: the local daemon is
+  running, but `/var/run/docker.sock` is root:docker mode 0660; uid 10014 belongs
+  only to `staging`, and `sudo -n -l` denies sudo. No daemon, group, socket mode,
+  or system service was changed. The Dockerfile/build/topology gate must still
+  be run with authorized local Docker access; local socket tests or Compose
+  parsing alone do not satisfy it. The checked-in runner is
+  `python3 scripts/test-container.py`.
+- Next: publish the Phase 5 review chunk, then complete full isolated
+  game/save/copyover journeys and the container gate. No live Discord
   messages were sent; permission/audience checks remain a later rollout gate.
 - Git policy for this project: commit and push each verified chunk, open focused
   ready-for-review PRs, stack dependent changes, and leave merging to review.
@@ -456,8 +485,8 @@ fixture peer. No sample or documentation change silently enables game ingress.
 
 The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
 exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
-Node/native command-boundary integration is verified; tested deployment
-instructions and full isolated-game acceptance remain pending.
+Node/native command-boundary integration and local/PM2 sample deployment are
+verified. Container execution and full isolated-game acceptance remain pending.
 
 ```json
 {

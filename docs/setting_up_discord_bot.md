@@ -1,158 +1,68 @@
-# Setting Up Discord Bot for MUD-Discord-Chat
+# Discord bot and channel setup
 
-This guide walks through setting up a Discord bot for the mud-discord-chat application on Ubuntu.
+Create an application in the [Discord Developer Portal](https://discord.com/developers/applications/),
+open its Bot settings and generate/reset its token. Store that token as
+`DISCORD_TOKEN` in the protected runtime environment or local `.env`. Do not put
+it in sample JSON, logs or a public issue. Reset a token if it has been exposed.
 
-## Prerequisites
-- Ubuntu server with Node.js 24.18.0+ and npm 12.0.1+ installed
-- Discord account
-- Discord server where you have admin permissions
+## Intents and installation
 
-## Step 1: Create Discord Application
+This application's `src/index.js` requests Guilds, Guild Messages, Message
+Content and Guild Members. Enable **Message Content Intent** and **Server Members
+Intent** in the application's privileged-intent settings. Presence Intent is
+not used. Discord may require approval for privileged-intent access depending
+on the application's verification/install status; follow its
+[Gateway intent documentation](https://docs.discord.com/developers/events/gateway#gateway-intents).
+These settings also apply when running the Duris one-way configuration because
+the shared runtime still requests those intents.
 
-1. Go to https://discord.com/developers/applications
-2. Click "New Application"
-3. Name your application and create it
-4. Save the Application ID and Public Key (for reference)
+Use the application's installation/OAuth2 URL settings to create a **guild**
+installation with the `bot` scope. Request View Channel, Send Messages and Read
+Message History for the selected text channels. This bridge needs no
+Administrator permission or slash-command scope. Install it into the intended
+server using an account authorized to manage that server.
 
-## Step 2: Create Bot
+Enable Developer Mode in your Discord client and copy the target channel's
+**ID**. Put that ID in `channels[].discord`; put the arbitrary case-sensitive MUD
+wire name in `channels[].mud`. Channel display names are not IDs.
 
-1. In your application, go to the **"Bot"** section in the left sidebar
-2. Click **"Add Bot"** or **"Create Bot"**
-3. Copy and save the **Bot Token** - you'll need this for your `.env` file
+## Duris staff-only audience
 
-## Step 3: Configure Bot Settings
+Create one dedicated petition text channel. Deny View Channel to `@everyone`;
+allow it only for intended staff roles and the bot. Review all role and member
+overrides, because another role's allow can grant access. Server owners and
+Administrator roles bypass channel overwrites, so include them in the audience
+review. Discord documents this in its
+[permission hierarchy](https://docs.discord.com/developers/topics/permissions#permission-hierarchy).
 
-1. In the Bot section, configure:
-   - **Public Bot**: Can be ON or OFF based on preference
-   - Under **Privileged Gateway Intents**, turn ON:
-     - Message Content Intent
-     - Server Members Intent  
-     - Presence Intent (optional but recommended)
-2. Save changes
+Before rollout, test the channel with an ordinary non-staff account and the
+intended staff roles, and verify the bot can view/send. Use exactly one Node
+mapping with `mud: "petition"` and `direction: "mud_to_discord"`. Native Duris
+independently discards incoming chat. Privacy controls the audience; direction
+controls whether a post can enter the game. Discord staff must use the game
+itself for authorized replies.
 
-## Step 4: Generate Invite Link
+## Configure and verify
 
-1. Go to **"OAuth2"** � **"URL Generator"** in the left sidebar
-2. Select **Scopes**:
-   - `bot`
-3. Select **Bot Permissions**:
-   - Send Messages
-   - View Channels (or Read Messages/View Channels)
-   - Read Message History
-4. Copy the generated URL at the bottom
+From the bridge repository after `npm ci`:
 
-## Step 5: Add Bot to Your Server
-
-1. Open the invite URL in your browser
-2. Select **Guild Install** if prompted
-3. Choose your Discord server from the dropdown
-4. Click "Authorize"
-
-## Step 6: Install Application on Server
-
-1. Check Node.js is installed:
-   ```bash
-   node --version  # Should be v24.18.0 or higher
-   npm --version   # Should be v12.0.1 or higher
-   ```
-
-2. Clone the repository:
-   ```bash
-   cd ~
-   git clone https://github.com/LuminariMUD/discord-mud-chat.git
-   cd discord-mud-chat
-   ```
-
-3. Install dependencies:
-   ```bash
-   npm ci
-   ```
-
-4. Set up configuration files:
-   ```bash
-   cp config/config.example.json config/config.json
-   cp .env.example .env
-   ```
-
-5. Add your bot token to `.env`:
-   ```bash
-   nano .env
-   # Add: DISCORD_TOKEN=your_bot_token_here
-   ```
-
-6. Configure MUD connection in `config/config.json`:
-   ```bash
-   nano config/config.json
-   ```
-   Set:
-   - `"mud_ip": "127.0.0.1"` for a local plaintext MUD, or a remote host with `"mud_tls": true`
-   - `"mud_port": YOUR_MUD_LISTENER_PORT`
-   - Configure channel mappings as needed
-
-## Step 7: Run the Bot
-
-Test the connection:
-```bash
-npm start
+```sh
+cp config/config.example.json config/config.json
+cp .env.example .env
 ```
 
-You should see:
-- Connection to your MUD
-- Bot logged into Discord
-- List of monitored channels
+For Duris choose `config/config.duris.example.json` and follow the
+[Duris guide](duris.md). Configure the dedicated MUD JSON listener, token and
+channel IDs; read [deployment](deploy.md) for TLS and container namespaces.
+Generic mappings omit `direction` or use `both` for both directions.
 
-## Step 8: Keep Bot Running Permanently with PM2
+`npm start` logs into the real service. During the intended rollout, verify a
+small allowed event in each selected direction; Duris must show both petition
+and ptell output while an ordinary Discord post produces no game output and no
+Discord-to-MUD count. Mention parsing is disabled on every outbound post.
+Use one bridge process, including under [PM2 or Docker](deploy.md).
 
-### Install PM2
-```bash
-sudo npm install --global pm2@latest
-```
-
-### Start the bot with PM2
-```bash
-# From the discord-mud-chat directory
-pm2 start ecosystem.config.js
-```
-
-You should see the bot listed as "online" in the PM2 output.
-
-### Verify bot is running
-```bash
-pm2 status
-```
-
-### Set up auto-start on server reboot
-1. Generate startup script:
-   ```bash
-   pm2 startup
-   ```
-   This will output a command starting with `sudo env PATH=...`
-
-2. Copy and run the exact command it gives you (you may need to run it as root/sudo)
-
-3. Save the current PM2 process list:
-   ```bash
-   pm2 save
-   ```
-
-### Useful PM2 commands
-```bash
-pm2 logs            # View bot logs
-pm2 monit           # Real-time monitoring
-pm2 restart all     # Restart the bot
-pm2 stop all        # Stop the bot
-pm2 status          # Check bot status
-```
-
-Your bot will now:
-- Run continuously in the background
-- Auto-restart if it crashes
-- Start automatically when the server reboots
-
-## Troubleshooting
-
-- **"Used disallowed intents" error**: Make sure all required intents are enabled in the Bot settings (Message Content, Server Members, Presence)
-- **"Private application cannot have a default authorization link"**: This warning when making the bot private is normal - you can leave it public if needed
-- **Bot not responding**: Check channel mappings in config.json match your Discord channel names
-- **Connection refused**: Verify MUD listener port is correct and accepting connections
-- **PM2 not found**: Install the current PM2 release with `sudo npm install --global pm2@latest`
+For credential-free verification, run the [test suites](testing.md). If startup
+reports disallowed intents, check the two requested privileged intents above.
+If the bot is connected but cannot post, check the channel ID and effective
+permissions; connection health alone does not prove access or delivery.

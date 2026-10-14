@@ -1,0 +1,4 @@
+# Linux: Node shares the host MUD's loopback namespace. No published ports.
+services:
+  mud-discord-chat:
+    network_mode: host

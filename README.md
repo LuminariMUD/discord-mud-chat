@@ -1,323 +1,139 @@
-# MUD-Discord Chat Bridge
+# MUD–Discord Chat Bridge
 
-A Node.js application that bridges communication between a MUD (Multi-User Dungeon) and Discord channels, enabling bidirectional chat relay.
+A Node.js bridge between a MUD's dedicated JSON endpoint and Discord text
+channels. Generic mappings are bidirectional by default; individual mappings
+can export MUD chat only.
 
-## LuminariMUD Eco-System
+Choose an integration path:
 
-What we call the "Lumiverse":
+- [Generic MUD integration](docs/mud_requires.md) and the
+  [tested C89/cJSON sample](docs/mud_example/README.md).
+- [Duris petition feed](docs/duris.md): accepted petitions and staff `ptell`
+  replies to one staff-only channel, with game ingress disabled at both ends.
+- [Shared wire protocol](docs/protocol.md), [deployment](docs/deploy.md),
+  [Discord bot setup](docs/setting_up_discord_bot.md), and [tests](docs/testing.md).
 
-- [LuminariMUD game server](https://github.com/LuminariMUD/Luminari-Source)
-- [Sage GraphRAG lore and world building](https://github.com/LuminariMUD/sage)
-- [Luminari web client](https://github.com/LuminariMUD/luminariweb)
-- [InterMUD-3 client](https://github.com/LuminariMUD/Intermud3)
-- [Wilderness editor](https://github.com/LuminariMUD/wildeditor)
-- [Mudlet interface](https://github.com/LuminariMUD/LuminariGUI)
+A MUD's name in an example is not evidence that its upstream source was tested.
+The generic sample has an independent executable harness; Duris has native
+command and cross-repository tests. Verification and remaining acceptance gates
+are recorded in the [project handoff](docs/ongoing-projects/duris-petition-compatibility.md).
 
-## Features
+## Quick start
 
-- 🔄 Bidirectional message relay between MUD and Discord
-- 📊 Multiple channel mapping support
-- 🔌 Automatic reconnection with configurable retry logic
-- 🚫 Security features (@everyone/@here mention stripping)
-- ⚡ Rate limiting to prevent spam
-- 🔐 Certificate-validated TLS for remote MUD connections and authentication
-- 😊 Emoji stripping for MUD compatibility
-- 📝 Winston logging with rotation and multiple outputs
-- 🏥 Health check endpoint for monitoring
-- 🛑 Graceful shutdown handling
-- 🐳 Docker containerization support
-- 📦 PM2 support for production deployment
+Use Node >=24.18.0 and npm >=12.0.1 (`.nvmrc` selects the project Node version).
+Prepare a bot through the setup guide and a MUD **JSON listener**, separate from
+player Telnet/TLS/GMCP/WebSocket ports.
 
-## Quick Start
-
-Requires Node.js 24.18.0 or newer and npm 12.0.1 or newer. If you use
-`nvm`, run `nvm install` from the repository root to select the version
-declared in `.nvmrc`.
-
-1. Clone the repository:
-```bash
+```sh
 git clone https://github.com/LuminariMUD/discord-mud-chat.git
 cd discord-mud-chat
-```
-
-2. Install dependencies:
-```bash
 npm ci
+cp config/config.example.json config/config.json
+cp .env.example .env
 ```
 
-3. Configure the application:
-   - Copy `config/config.example.json` to `config/config.json`
-   - Edit `config/config.json` with your MUD connection details and channel mappings
-   - Copy `.env.example` to `.env`
-   - Add your Discord bot token to `.env`
-
-4. Run the application:
-```bash
-npm start  # Production mode
-npm run dev  # Development mode with auto-restart
-```
-
-For detailed installation and deployment instructions, see [📚 Deployment Guide](docs/deploy.md).
-
-## Discord Bot Setup
-
-### Step 1: Create Discord Application
-
-1. Visit the [Discord Developer Portal](https://discord.com/developers/applications/) and create a new application
-2. Record the **Client ID** (you'll need this for the invite URL)
-3. Navigate to the **Bot** section in the left sidebar
-4. Click **Reset Token** and record the token for later use
-5. Under **Privileged Gateway Intents**, enable:
-   - Server Members Intent
-   - Message Content Intent
-
-### Step 2: Invite Bot to Server
-
-1. Use this URL, replacing `CLIENT_ID` with your Client ID:
-   ```
-   https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot&permissions=3072
-   ```
-2. Select your server and authorize the bot
-
-### Step 3: Get Discord Channel IDs
-
-1. Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)
-2. Right-click on any channel you want to bridge
-3. Select **Copy ID**
-
-![Channel ID Copy](https://user-images.githubusercontent.com/1266935/114635703-45329300-9c93-11eb-9da4-f92b05b0fa0e.png)
+For Duris, copy `config/config.duris.example.json` instead. Set `DISCORD_TOKEN`
+in the protected environment or `.env`. Edit the connection and Discord channel
+IDs in `config/config.json`, then run `npm start`. Use `npm run dev` for Node's
+watch mode. Never commit the local config or tokens.
 
 ## Configuration
 
-### Environment Variables (.env)
-
-Create a `.env` file in the project root:
-
-```env
-# Required
-DISCORD_TOKEN=your_discord_bot_token_here
-
-# Optional
-# MUD_AUTH_TOKEN=your_mud_auth_token_here  # For MUD authentication
-# HEALTH_PORT=3000                          # Health check endpoint port
-# LOG_LEVEL=info                            # Logging level (error, warn, info, debug)
-```
-
-### Configuration File (config/config.json)
-
-Copy `config/config.example.json` to `config/config.json` and customize:
-
 ```json
 {
-  "mud_name": "LuminariMUD",
+  "mud_name": "Your MUD",
   "mud_ip": "127.0.0.1",
   "mud_port": 8181,
   "mud_tls": false,
   "mud_tls_servername": "",
   "mud_max_record_bytes": 1048576,
-  "mud_retry_count": 5,
+  "mud_retry_count": 50,
   "mud_retry_delay": 30000,
+  "mud_infinite_retries": true,
   "rate_limit_per_channel": 10,
   "strip_emoji": true,
   "enable_bitly": false,
   "largest_printable_string": 65535,
   "channels": [
-    { "discord": "432623057706811394", "mud": "gossip" },
-    { "discord": "819275737328386118", "mud": "auction" },
-    { "discord": "716021506605318195", "mud": "gratz" }
+    { "discord": "GOSSIP_CHANNEL_ID", "mud": "gossip" },
+    { "discord": "AUCTION_CHANNEL_ID", "mud": "auction", "direction": "both" }
   ]
 }
 ```
 
-### Configuration Options
+| Setting | Meaning |
+| --- | --- |
+| `mud_ip`, `mud_port` | Dedicated JSON endpoint, not a player port. |
+| `mud_tls` | Certificate-validated TLS; required for non-literal-loopback addresses. |
+| `mud_tls_servername` | Certificate DNS name when connecting by IP. |
+| `mud_max_record_bytes` | Maximum serialized UTF-8 record bytes before LF, in either direction; default 1 MiB. |
+| `mud_retry_delay` | Fixed reconnect delay in milliseconds; no exponential backoff. |
+| `mud_retry_count`, `mud_infinite_retries` | Error retry policy; see the exact [protocol behavior](docs/protocol.md). |
+| `rate_limit_per_channel` | Discord ingress rate per stable user ID and MUD channel; default 10/s. |
+| `strip_emoji` | Strip custom/Unicode emoji from Discord names/content before MUD ingress. |
+| `largest_printable_string` | Maximum incoming Discord content length in UTF-16 units before sanitization. |
+| `enable_bitly` | Reserved; URL shortening is not implemented. |
+| `channels[].direction` | Omitted/`both` permits both directions; `mud_to_discord` blocks Discord chat. Unknown values fail startup. |
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `mud_name` | Display name for your MUD | Required |
-| `mud_ip` | MUD server IP address | Required |
-| `mud_port` | MUD server port | Required |
-| `mud_tls` | Use certificate-validated TLS (required unless `mud_ip` is loopback) | false |
-| `mud_tls_servername` | Certificate hostname when connecting to an IP address | "" |
-| `mud_max_record_bytes` | Maximum newline-delimited MUD record size; oversized records are discarded | 1048576 |
-| `MUD_AUTH_TOKEN` | Optional MUD token in `.env`; requires `mud_tls: true` | unset |
-| `mud_retry_count` | Number of reconnection attempts | 5 |
-| `mud_retry_delay` | Delay between reconnection attempts (ms) | 30000 |
-| `rate_limit_per_channel` | Messages per second per channel | 10 |
-| `strip_emoji` | Remove emojis from messages | true |
-| `enable_bitly` | Reserved for future use | false |
-| `largest_printable_string` | Maximum message length | 65535 |
-| `channels` | Array of channel mappings | Required |
+Mappings use case-sensitive MUD names and Discord **IDs**. MUD events fan out to
+all matching mappings; Discord posts use only the first matching mapping. A
+blocked first mapping never falls through. Auth and heartbeat controls still run
+in one-way mode. Avoid duplicate mappings unless duplicate posts are intended.
 
-Plaintext TCP is restricted to literal loopback addresses such as `127.0.0.1`
-and `::1`; hostnames (including `localhost`) require TLS so DNS cannot redirect
-cleartext traffic. For every remote MUD, set `mud_tls` to `true` and connect to a
-TLS-capable listener or TLS-terminating proxy. Publicly trusted certificates use
-the system trust store; private certificate authorities can be supplied to
-Node.js with `NODE_EXTRA_CA_CERTS`. Authentication tokens are sent only after a
-certificate-validated TLS connection is established. `MUD_AUTH_TOKEN` is loaded
-only from the environment; legacy `mud_auth_token` values in `config.json` are
-ignored and should be removed.
+Plaintext is allowed only to literal loopback IPs, with no MUD token. A hostname
+such as `localhost`, a private network address, or a remote host requires TLS.
+Set the optional token through `MUD_AUTH_TOKEN` only; JSON token fields are
+ignored. Private CA trust uses `NODE_EXTRA_CA_CERTS` before Node starts. Never
+disable certificate verification. See the deployment guide for containers,
+whose loopback is normally separate from the host MUD.
 
-### Channel direction
+## Delivery and operations
 
-Mappings are bidirectional by default. Set `"direction": "mud_to_discord"` on a
-mapping to export MUD messages while ignoring Discord posts in that channel:
+The wire is one UTF-8 JSON object plus LF per record:
 
 ```json
-{ "discord": "STAFF_CHANNEL_ID", "mud": "petition", "direction": "mud_to_discord" }
+{"channel":"gossip","name":"Ayla","message":"Hello","emoted":0}
 ```
 
-Explicit `"direction": "both"` also permits both directions. Other values fail
-startup. A blocked first matching mapping never falls through to another;
-authentication and heartbeats continue normally. See the
-[wire protocol](docs/protocol.md) for framing, mapping order, and delivery limits.
+Ordinary Discord content is `name: message`; numeric `emoted: 1` sends only the
+message, with no automatic italics. Long output is split at Unicode code-point
+boundaries after formatting, and every part disables mention parsing. Discord
+ingress sanitizes mass/user mentions and applies stable-user rate limits.
 
-## Message Format
+Delivery is bounded and best effort. There is no durable queue or replay across
+outages. Successful Discord posts and accepted MUD writes have separate health
+counters from drops; none proves game receipt. Read the
+[protocol](docs/protocol.md) for byte/count bounds, backpressure, and recovery.
 
-The application exchanges JSON messages with the MUD. Each UTF-8 JSON record
-must end with a newline (`\n`); TCP chunks are not message boundaries, so the
-delimiter is required even when sending one record at a time.
+Run **one process** using local Node, PM2 fork mode, or Docker. Do not scale PM2
+workers or overlap rolling deployments for one endpoint. The
+[deployment guide](docs/deploy.md) covers loopback/TLS topology, stop-before-start
+updates, and rollback.
 
-```json
-{
-  "channel": "String",  // MUD channel name
-  "name": "String",     // Username/player name  
-  "message": "String",  // Chat message content
-  "emoted": 0          // Optional: 1 for emote messages
-}
+`http://127.0.0.1:3000/health` reports connection state and counters. It is bound
+to loopback and unauthenticated; inspect it in the process's network namespace.
+`HEALTH_PORT` selects another port. `LOG_LEVEL` controls Winston output.
+`logs/app.log` and `logs/error.log` rotate by size (10 MiB, up to seven files
+per transport), not by elapsed days. Private bodies and tokens do not belong in
+diagnostics or issue reports.
+
+```sh
+npm run lint
+npm run test:coverage
+npm audit --audit-level=high
 ```
 
-## Deployment
+See [testing](docs/testing.md) for sample, native, PM2 and container checks. See
+[bridge requirements](docs/bridge_requires.md) for implementation boundaries.
 
-### 🚀 Quick Start (Local)
-```bash
-npm start    # Production mode
-npm run dev  # Development mode with auto-restart
-```
+## LuminariMUD ecosystem
 
-### 🐳 Docker (Recommended)
-```bash
-docker compose up -d
-```
+- [LuminariMUD game server](https://github.com/LuminariMUD/Luminari-Source)
+- [Sage lore and world building](https://github.com/LuminariMUD/sage)
+- [Luminari web client](https://github.com/LuminariMUD/luminariweb)
+- [InterMUD-3 client](https://github.com/LuminariMUD/Intermud3)
+- [Wilderness editor](https://github.com/LuminariMUD/wildeditor)
+- [Mudlet interface](https://github.com/LuminariMUD/LuminariGUI)
 
-### 📦 PM2 (Process Management)
-```bash
-pm2 start ecosystem.config.js
-```
-
-**For detailed deployment instructions including:**
-- Local installation and configuration
-- Docker deployment with compose
-- PM2 process management
-- Production best practices
-- Security hardening
-- Monitoring and health checks
-- Troubleshooting guide
-
-**See the complete [📚 Deployment Guide](docs/deploy.md)**
-
-### Available Scripts
-
-- `npm start` - Start the application
-- `npm run dev` - Start with Node watch mode (`node --watch`) for development
-- `npm run lint` - Run ESLint to check code quality
-- `npm run lint:fix` - Run ESLint with auto-fix
-
-## Troubleshooting
-
-### Bot Not Connecting to Discord
-- Verify your Discord token in `.env` is correct
-- Check that the bot has been invited to your server
-- Ensure the bot has proper permissions in the target channels
-- Check console output for specific error messages
-
-### MUD Connection Issues
-- Verify the MUD IP and port in `config/config.json`
-- Ensure the MUD server is running and accepting connections
-- Check firewall settings on both client and server
-- Review console logs for connection errors
-
-### Messages Not Relaying
-- Confirm channel IDs in `config/config.json` are correct
-- Verify the bot can see and send messages in the Discord channels
-- Check that MUD channel names match exactly (case-sensitive)
-- Ensure Message Content Intent is enabled in Discord Developer Portal
-
-### Performance Issues
-- Adjust `mud_retry_delay` for less frequent reconnection attempts
-- Monitor message volume and adjust `largest_printable_string` if needed
-- Consider using PM2 for better process management and auto-restart
-
-## Project Structure
-
-```
-mud-discord-chat/
-├── src/
-│   ├── index.js          # Main application file
-│   ├── logger.js         # Winston logging configuration
-│   └── health.js         # Health check HTTP server
-├── config/
-│   ├── config.json       # Your configuration (git ignored)
-│   ├── config.js         # Configuration loader
-│   └── config.example.json # Configuration template
-├── docs/
-│   ├── deploy.md         # Comprehensive deployment guide
-│   ├── bridge_requires.md # Technical requirements specification
-│   └── mud_example/      # Example MUD integration code
-├── logs/                 # Log files directory (auto-created)
-├── .env                  # Environment variables (git ignored)
-├── .env.example          # Environment template
-├── eslint.config.js      # ESLint flat configuration
-├── ecosystem.config.js   # PM2 configuration
-├── Dockerfile            # Docker container definition
-├── docker-compose.yml    # Docker Compose configuration
-├── .dockerignore         # Docker ignore patterns
-├── CLAUDE.md             # Claude Code guidance file
-├── LICENSE.txt           # ISC License
-├── package.json          # Project dependencies
-└── README.md            # This file
-```
-
-## Monitoring & Health
-
-### Logging
-
-The application uses Winston for comprehensive logging:
-- **Console output** with colored formatting in development
-- **File logs** with automatic rotation (7 days retention, 10MB max size)
-- `logs/app.log` - All application logs
-- `logs/error.log` - Error logs only
-- `logs/pm2-*.log` - PM2-specific logs (when using PM2)
-
-Log levels can be configured via `LOG_LEVEL` environment variable (error, warn, info, debug).
-
-### Health Check Endpoint
-
-Monitor application health locally at `http://127.0.0.1:3000/health`. The
-endpoint is intentionally bound to loopback because it exposes operational
-telemetry without authentication. Docker uses the endpoint only from inside the
-container; expose it externally only through an authenticated monitoring proxy.
-
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00.000Z",
-  "uptime": 3600,
-  "connections": {
-    "mud": true,
-    "discord": true
-  },
-  "messages": {
-    "mudToDiscord": 150,
-    "discordToMud": 200
-  }
-}
-```
-
-## Contributing
-
-Issues and pull requests are welcome at https://github.com/LuminariMUD/discord-mud-chat
-
-## License
-
-ISC License - See LICENSE file for details
+Issues and pull requests are welcome in this repository. ISC license; see
+[LICENSE.txt](LICENSE.txt).

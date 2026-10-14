@@ -12,12 +12,8 @@ services:
       - NODE_ENV=production
     healthcheck:
       test:
-        - CMD
-        - wget
-        - --no-verbose
-        - --tries=1
-        - --spider
-        - http://127.0.0.1:3000/health
+        - CMD-SHELL
+        - 'wget --no-verbose --tries=1 --spider "http://127.0.0.1:$${HEALTH_PORT:-3000}/health"'
       interval: 30s
       timeout: 10s
       retries: 3

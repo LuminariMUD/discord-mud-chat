@@ -1,0 +1,193 @@
+diff --git a/help/duris_help_parsed.hlp b/help/duris_help_parsed.hlp
+index 24d9d01f8..f3d1fff5b 100644
+--- a/help/duris_help_parsed.hlp
++++ b/help/duris_help_parsed.hlp
+@@ -16778,6 +16778,10 @@ currently on the MUD (if there are any).  Certain guidelines should be
+ followed when petitioning:
+ * Do not inquire if gods are online. Describe your problem in details
+ so they can come back to it later when they have time.
++When the optional Discord petition feed is enabled, accepted petitions and
++staff ptell replies may also appear in a staff-only Discord channel, even when
++no gods are online. Discord posts cannot reply into the game. Native petition
++recipients, toggles, and logs remain unchanged; the feed is best effort.
+ ==See also==
+ gods, togglepetition, website, forums, bug, idea, typo, tell
+ The following help topics also matched your search:
+diff --git a/lib/information/help_index b/lib/information/help_index
+index 7b013362c..901e7cbb2 100755
+--- a/lib/information/help_index
++++ b/lib/information/help_index
+@@ -6766,6 +6766,11 @@ This is exactly like tell, except that <text> is broadcast to all gods
+ with petition toggled on, to let them know that you responded to a
+ particular petition.
+ 
++When enabled, the optional staff-only Discord petition feed also receives one
++copy of an accepted ptell, labeled with its sender and target. Concealed names
++are shown as Someone. Discord posts cannot become game replies. The existing
++native recipients, toggles, and logs are unchanged; delivery is best effort.
++
+ Example:
+         Oinkoink petitions 'Why is the sky blue?'
+ 
+diff --git a/src/Makefile b/src/Makefile
+index a0d5d2b28..adf68a12c 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -196,6 +196,8 @@ OBJS =  $(SHIP_OBJS) \
+ 				combat/chaos_config.o \
+ 				net/command_latency.o \
+ 				 net/comm.o \
++				 net/discord_bridge.o \
++				 net/discord_petition.o \
+ 				 persistence/copyover.o \
+ 				 core/common.o \
+ 				 world/condition.o \
+diff --git a/src/cmd/actcomm.c b/src/cmd/actcomm.c
+index 7eecccb52..ff8592c49 100644
+--- a/src/cmd/actcomm.c
++++ b/src/cmd/actcomm.c
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include "core/prototypes.h"
++#include "net/discord_petition.h"
+ #include "player/output_message.h"
+ #include "cmd/information_cache.h"
+ #include "cmd/help_cache.h"
+@@ -278,6 +279,7 @@ void do_petition(P_char ch, char *argument, int /*cmd*/)
+ 		send_to_char("Petition what?\r\n", ch);
+ 	else if (IS_PC(ch))
+ 	{
++		discord_petition_export(ch, argument);
+ 		if (IS_SET(ch->specials.act, PLR_ECHO))
+ 		{
+ 			snprintf(
+diff --git a/src/cmd/actwiz.c b/src/cmd/actwiz.c
+index 09cf00503..a476b800a 100644
+--- a/src/cmd/actwiz.c
++++ b/src/cmd/actwiz.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include "core/prototypes.h"
++#include "net/discord_petition.h"
+ #include "account/creation_availability_config.h"
+ #include "net/comm.h"
+ #include "world/db.h"
+@@ -7622,6 +7623,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
+ 		send_to_char("That person can't hear you.\n", ch);
+ 		return;
+ 	}
++	discord_petition_export(ch, msg, vict);
+ 	if (ch->desc)
+ 	{
+ 		if (IS_SET(ch->specials.act, PLR_ECHO))
+diff --git a/src/net/comm.c b/src/net/comm.c
+index c55c6a0d9..c222aa8a5 100644
+--- a/src/net/comm.c
++++ b/src/net/comm.c
+@@ -30,6 +30,7 @@
+ #include "core/structs.h"
+ #include "telemetry/telemetry_runtime.h"
+ #include "net/comm.h"
++#include "net/discord_bridge.h"
+ #include "net/session_input.h"
+ #include "net/output_style.h"
+ #include "net/chat_presentation.h"
+@@ -1294,8 +1295,9 @@ static void prepare_descriptor_latency_event(command_latency_event *event,
+ 
+ class scoped_command_latency
+ {
+-    public:
+-	scoped_command_latency(command_latency_tracker *tracker, const command_latency_event *event)
++public:
++	scoped_command_latency(command_latency_tracker * tracker,
++			       const command_latency_event *event)
+ 		: tracker_(tracker)
+ 		, event_(event)
+ 		, started_us_(loop_monotonic_us())
+@@ -1303,7 +1305,10 @@ class scoped_command_latency
+ 	{
+ 	}
+ 
+-	~scoped_command_latency() { finish(); }
++	~scoped_command_latency()
++	{
++		finish();
++	}
+ 
+ 	void finish()
+ 	{
+@@ -1315,9 +1320,9 @@ class scoped_command_latency
+ 	}
+ 
+ 	scoped_command_latency(const scoped_command_latency &) = delete;
+-	scoped_command_latency &operator=(const scoped_command_latency &) = delete;
++	scoped_command_latency &operator = (const scoped_command_latency &) = delete;
+ 
+-    private:
++private:
+ 	command_latency_tracker *tracker_;
+ 	const command_latency_event *event_;
+ 	uint64_t started_us_;
+@@ -1512,6 +1517,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
+ 	//PROFILE_END(process_signal_shutdown_pending);
+ 	persistence_log_poll();
+ 	checkpointing();
++	discord_bridge_poll();
++	static uint64_t discord_report_at = 0;
++	if (loop_monotonic_us() >= discord_report_at)
++	{
++		discord_report_at = loop_monotonic_us() + 60000000;
++		const auto bridge = discord_bridge_get_status();
++		if (bridge.listening)
++			logit(LOG_STATUS,
++			      "Discord bridge: connected=%d authenticated=%d queued=%zu sent=%llu dropped=%llu rejected=%llu clients_rejected=%llu auth_failed=%llu",
++			      bridge.connected, bridge.authenticated, bridge.queued_events,
++			      (unsigned long long)bridge.sent_events,
++			      (unsigned long long)bridge.dropped_events,
++			      (unsigned long long)bridge.rejected_records,
++			      (unsigned long long)bridge.rejected_clients,
++			      (unsigned long long)bridge.auth_failures);
++	}
+ 
+ 	if ((last_desc_per_hour_reset + 3600) <= time(0))
+ 	{
+@@ -1938,6 +1959,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
+ 
+ static void run_output_phase(game_loop_pulse_context &ctx)
+ {
++	discord_bridge_flush();
+ 	const uint64_t loop_tick = ctx.loop_tick;
+ 	P_desc point, next_point;
+ 
+@@ -2595,6 +2617,11 @@ void game_loop(int port, int sslport)
+ 		}
+ 	}
+ 
++	// The JSON bridge is recreated after exec, never inherited as a player socket.
++	if (!discord_bridge_init())
++		logit(LOG_STATUS,
++		      "WARNING: Discord bridge failed to start; check DURIS_DISCORD settings or port availability");
++
+ 	// store in file-scope statics for copyover access
+ 	mother_desc = s;
+ 	mother_desc_ssl = S;
+@@ -2682,6 +2709,8 @@ resume_game_loop:
+ 		return;
+ 	}
+ 
++	discord_bridge_shutdown();
++
+ 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
+ 	// failure is reported, never a reason to keep running. The writer gets 30 s for
+ 	// what is queued; run_the_game() names whatever it could not write once nothing
+@@ -3475,7 +3504,7 @@ void close_socket(struct descriptor_data *d)
+ 		FREE(d->storage);
+ 
+ #endif
+-		/* I really don't wanna crash it  */
++	/* I really don't wanna crash it  */
+ #ifdef USE_ACCOUNT
+ 	if (d->account)
+ 		d->account = free_account(d->account);

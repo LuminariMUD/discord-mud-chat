@@ -14,7 +14,9 @@ after the tests; no repository or system trust-store changes are needed.
 
 ## Continuous integration
 
-The GitHub Actions workflow in `.github/workflows/test.yml` runs for pull requests, pushes to `main`, and manual dispatches. It validates Node.js 24.18.0 and 26.8.1, then builds the production Docker image after both test jobs pass.
+The GitHub Actions workflow in `.github/workflows/test.yml` runs for pull requests, pushes to `main`, and manual dispatches. It validates Node.js 24.18.0 and 26.8.1, then builds the production Docker image and exercises its host-loopback deployment after both test jobs pass.
+An independent job compiles the generic C89 sample and runs its socket/fault
+tests with sanitizers; it installs cJSON development headers and needs no Duris.
 
 ## Coverage
 
@@ -75,3 +77,37 @@ The loopback proxy fragments native output byte by byte and injects invalid
 output solely to test Node's recovery; it does not replace the native endpoint.
 No game files, accounts, production environment, or Discord API are modified.
 Full isolated game boot/save/copyover journeys are separate acceptance checks.
+
+## Integration samples and deployment
+
+```sh
+python3 scripts/test-generic-sample.py
+SANITIZE=1 python3 scripts/test-generic-sample.py
+python3 scripts/check-duris-sample.py --duris /path/to/duris
+SANITIZE=1 python3 scripts/check-duris-sample.py --duris /path/to/duris
+HEALTH_PORT=0 node scripts/testing/deployment-smoke.js
+HEALTH_PORT=0 SMOKE_GENERIC=1 node scripts/testing/deployment-smoke.js
+node scripts/check-pm2.js
+python3 scripts/test-container.py
+```
+
+The generic C89 sample runner needs a C compiler, Python 3 and cJSON development
+headers/library. It uses a separate fixture process and real sockets, with
+syscall wrappers for short writes/EINTR/EAGAIN/EPIPE and per-pulse budget checks.
+The native sample checker validates hashes, source drift and clean-base patch
+applicability, then compiles and runs the copied modules. These tests are opt-in;
+the generic npm suite does not require a C compiler or Duris checkout.
+
+Local deployment checks use the actual application composition, sample configs,
+real loopback sockets/HTTP health, and a fake Discord client. PM2 must be on PATH;
+its runner creates a temporary PM2 home, tests exactly one fork instance and
+signal shutdown, then removes that test daemon and files. It does not touch the
+operator's PM2 state or startup service.
+
+The container runner requires access to local Linux Docker Engine. It builds the
+actual Dockerfile and connects the image's real application to an independent
+host-loopback peer via `--network host`, using a mounted synthetic Discord driver.
+It preserves Docker registry/proxy configuration and optionally passes
+`CODEX_PROXY_CERT` as a BuildKit CA secret. It never uses production config or
+Discord credentials. Docker image/topology verification is a separate gate from
+local tests or Compose syntax checks; record unavailable daemon access explicitly.

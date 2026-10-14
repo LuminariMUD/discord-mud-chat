@@ -1,303 +1,88 @@
-# Node.js Discord Bridge Requirements
+# Bridge behavior and requirements
 
-## Overview
-This document specifies the requirements for the Node.js Discord bridge application that connects to LuminariMUD's TCP server and enables bidirectional chat between MUD players and Discord users.
+This describes the implemented Node bridge. The [wire protocol](protocol.md)
+is authoritative for peer interoperability; the [project handoff](ongoing-projects/duris-petition-compatibility.md)
+records Duris work and remaining acceptance gates.
 
-## Core Requirements
+## Runtime and configuration
 
-### 1. Network Connection
-- **Protocol**: TCP client connecting to MUD server
-- **Port**: 8181 (configurable)
-- **Connection Type**: Persistent literal-loopback TCP or certificate-validated TLS connection with automatic reconnection; hostname and remote plaintext connections are rejected
-- **Reconnection**: Automatic retry with exponential backoff (5 attempts, 30-second delays)
-- **Keep-alive**: Implement connection health monitoring
+The project requires Node >=24.18.0 and npm >=12.0.1, installs from
+`package-lock.json`, and uses discord.js 14, Winston, dotenv and emoji-regex.
+`src/index.js` composes `ChatBridge`, `MudClient`, health and logging. Tests use
+the Node built-in runner, not Jest. Configuration is `config/config.json` plus
+the environment; see [README](../README.md) for fields.
 
-### 2. Discord Bot Integration
-- **Library**: discord.js (latest stable version)
-- **Authentication**: Discord bot token
-- **Permissions Required**:
-  - Read Messages
-  - Send Messages
-  - View Channel
-  - Read Message History
-- **Intents Required**:
-  - GUILDS
-  - GUILD_MESSAGES
-  - MESSAGE_CONTENT
+`DISCORD_TOKEN` is the bot credential. `MUD_AUTH_TOKEN` is optional and sourced
+only from the environment; legacy JSON MUD tokens are ignored. `HEALTH_PORT`
+and `LOG_LEVEL` control operations. Bitly options are reserved and do not enable
+URL shortening.
 
-### 3. Message Protocol
+## Relay invariants
 
-#### JSON Message Format
-**MUD to Discord:**
-```json
-{
-    "channel": "gossip",
-    "name": "PlayerName",
-    "message": "Message content",
-    "emoted": 0
-}
-```
+- Generic mappings default to bidirectional; `both` is explicit bidirectional
+  and `mud_to_discord` blocks Discord chat. Unknown directions fail startup and
+  direct bridge construction. A blocked first match cannot fall through.
+- MUD channel names are arbitrary and case-sensitive. MUD events fan out to all
+  matching mappings, including duplicates; Discord posts use the first match.
+- Chat fields are validated. Ordinary output is `name: message`; numeric
+  `emoted: 1` omits the prefix and does not add italics. Extra fields are tolerated.
+- Discord output includes the prefix before splitting at code-point boundaries
+  into <=2000 UTF-16 units. Sends are ordered per destination; destinations drain
+  independently. Every part disables mention parsing.
+- Discord ingress ignores bots, missing members/IDs, empty/oversized text and
+  unmapped/one-way channels. It sanitizes mass/user mentions, optionally strips
+  emoji, and rate-limits by stable user ID and MUD channel.
+- Auth precedes chat on a newly established TLS socket. Heartbeats remain valid
+  in one-way mode. There is no mandatory auth acknowledgment/pong/version change.
 
-**Discord to MUD:**
-```json
-{
-    "channel": "gossip",
-    "name": "DiscordUser",
-    "message": "Message content"
-}
-```
+Duris is an adapter, not a special mode in the Node application. It publishes
+only accepted petitions and staff replies through a dedicated endpoint and
+independently discards all incoming chat. See [Duris](duris.md). Generic games
+retain both directions and their own channels; see [MUD requirements](mud_requires.md).
 
-### 4. Channel Mapping
-The bridge must support configurable channel mappings between Discord channels and MUD channels:
+## Limits and failures
 
-| MUD Channel | Discord Channel ID | Description |
-|-------------|-------------------|-------------|
-| gossip      | (configurable)    | General chat |
-| auction     | (configurable)    | Trade channel |
-| gratz       | (configurable)    | Congratulations |
+The shared record limit is measured in serialized UTF-8 bytes before LF, default
+1 MiB. Both directions reject whole oversized records; unfinished inbound
+records are discarded through the next delimiter. Connection loss resets
+framing state. Malformed records do not stop subsequent valid records.
 
-### 5. Authentication (Optional)
-- Support optional token-based authentication with MUD server
-- Require certificate-validated TLS whenever a token is configured
-- Send the authentication message as the first record only after TLS connects:
-```json
-{
-    "channel": "auth",
-    "name": "bot",
-    "message": "secret-token-here"
-}
-```
+Discord delivery retains at most 256 events / 4 MiB of formatted UTF-8 content,
+including in-flight events. MUD writes retain at most 256 writes / 4 MiB of wire
+bytes, account for socket buffering, and reject additional writes after
+backpressure until drain. A false socket write result is already accepted and
+must not be replayed. Failures and shutdown discard pending work; there is no
+durable history or exactly-once guarantee. Discord API library behavior is not
+a substitute for application delivery bounds.
 
-## Technical Implementation Requirements
+Reconnects use fixed `mud_retry_delay`, with the existing finite/infinite error
+retry policy. Clean closes reconnect as documented in the protocol. SIGINT and
+SIGTERM stop listeners/timers/transports; PM2 uses signal shutdown. One active
+process per endpoint avoids duplicate relay and competing clients.
 
-### 1. Configuration Management
-Keep non-secret runtime settings in `config/config.json`:
+## Transport, health and logs
 
-```json
-{
-    "mud_ip": "127.0.0.1",
-    "mud_port": 8181,
-    "mud_tls": false,
-    "channels": [
-        { "discord": "CHANNEL_ID_1", "mud": "gossip" }
-    ],
-    "largest_printable_string": 65535,
-    "rate_limit_per_channel": 10,
-    "mud_retry_count": 5,
-    "mud_retry_delay": 30000
-}
-```
+Only literal loopback IPs permit plaintext. Remote/private addresses and
+hostnames require certificate-validated TLS. Tokens require TLS even on
+loopback. An explicit server name supports IP connections with DNS certificates;
+private CAs use `NODE_EXTRA_CA_CERTS`. Never weaken certificate validation.
 
-Keep credentials in a protected `.env` file or secret manager, never in the
-JSON configuration:
+Health binds to `127.0.0.1` and reports connectivity plus successful-post,
+accepted-write and drop counters. Connectivity is not authentication or delivery
+proof; accepted writes are not confirmed game receipt. Logs omit relay bodies
+and tokens. File logs rotate by size with seven files per transport; PM2 logs
+need their own retention policy. No SLA, latency, throughput or memory target is
+claimed without a measured deployment workload.
 
-```env
-DISCORD_TOKEN=your_discord_bot_token
-# Set only when mud_tls is true:
-# MUD_AUTH_TOKEN=your_mud_auth_token
-```
+## Validation and deployment
 
-The loader must ignore legacy `mud_auth_token` values in `config.json`; the
-environment or injected secret-manager environment is the only supported source.
+`npm run lint` and `npm run test:coverage` retain minimum coverage thresholds of
+95% lines, 90% branches and 85% functions. Generic TCP/TLS tests use a separate
+fixture process; native, sample and deployment checks are opt-in. The CI Node
+matrix and container job remain in `.github/workflows/test.yml`.
+See [testing](testing.md) for exact commands and evidence boundaries.
 
-### 2. Message Processing
-
-#### Discord to MUD Flow:
-1. Capture Discord message event
-2. Validate channel is mapped
-3. Strip emojis and special characters (configurable)
-4. Truncate to max length (65535 characters)
-5. Build JSON message
-6. Send over TCP with newline delimiter
-7. Handle send errors gracefully
-
-#### MUD to Discord Flow:
-1. Receive newline-delimited UTF-8 JSON records from the TCP socket
-2. Parse and validate JSON
-3. Map channel to Discord channel ID
-4. Format message for Discord
-5. Handle emotes (italic formatting if emoted=1)
-6. Post to Discord channel
-7. Handle Discord API rate limits
-
-### 3. Error Handling
-- **Connection errors**: Log and attempt reconnection
-- **JSON parsing errors**: Log error, continue operation
-- **Discord API errors**: Implement exponential backoff
-- **Rate limit handling**: Queue messages when rate limited
-- **Invalid channel mappings**: Log and skip message
-
-### 4. Security Requirements
-- **Input sanitization**: Remove @everyone, @here mentions
-- **User validation**: Strip invalid characters from usernames
-- **Message validation**: Enforce length limits
-- **Connection security**: Require certificate-validated TLS for hostnames and remote MUDs, restrict plaintext TCP to literal loopback IPs, and never send authentication tokens over plaintext
-- **Token storage**: Use environment variables for sensitive data
-
-### 5. Logging Requirements
-- **File logging**: Rotate logs daily, keep 7 days
-- **Log levels**: ERROR, WARN, INFO, DEBUG
-- **Log format**: Timestamp, level, component, message
-- **Performance metrics**: Message throughput, latency
-- **Error tracking**: Connection failures, parse errors
-
-### 6. Deployment Support
-- **Process management**: PM2 configuration
-- **Docker support**: Dockerfile and docker-compose.yml
-- **Environment variables**: Support for .env files
-- **Health checks**: HTTP endpoint for monitoring
-- **Graceful shutdown**: Clean disconnect on SIGTERM/SIGINT
-
-## Package Dependencies
-
-### Required NPM Packages:
-```json
-{
-  "dependencies": {
-    "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2",
-    "emoji-regex": "^10.6.0",
-    "winston": "^3.19.0"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.8.0",
-    "globals": "^17.8.0",
-    "nodemon": "^3.1.14"
-  }
-}
-```
-
-## Implementation Checklist
-
-### Core Features
-- [ ] TCP client connection to MUD
-- [ ] Automatic reconnection logic
-- [ ] Discord bot connection
-- [ ] Bidirectional message routing
-- [ ] JSON message parsing/building
-- [ ] Channel mapping configuration
-- [ ] Authentication support
-
-### Message Handling
-- [ ] Discord message capture
-- [ ] MUD message reception
-- [ ] Emoji stripping
-- [ ] Length validation
-- [ ] Rate limiting
-- [ ] Emote formatting
-
-### Error Handling
-- [ ] Connection error recovery
-- [ ] JSON parse error handling
-- [ ] Discord API error handling
-- [ ] Graceful degradation
-
-### Security
-- [ ] Input sanitization
-- [ ] Mention stripping
-- [ ] Token management
-- [ ] Connection validation
-
-### Monitoring
-- [ ] File logging
-- [ ] Performance metrics
-- [ ] Health endpoint
-- [ ] Error tracking
-
-### Deployment
-- [ ] PM2 configuration
-- [ ] Docker support
-- [ ] Environment configuration
-- [ ] Documentation
-
-## Example Implementation Structure
-
-```
-discord-mud-bridge/
-├── src/
-│   ├── index.js           // Main entry point
-│   ├── mud-client.js      // TCP client for MUD
-│   ├── discord-bot.js     // Discord bot handler
-│   ├── message-router.js  // Message routing logic
-│   ├── config.js          // Configuration loader
-│   └── utils/
-│       ├── logger.js      // Winston logger setup
-│       ├── sanitizer.js   // Message sanitization
-│       └── rate-limiter.js // Rate limiting
-├── config/
-│   ├── default.json       // Default configuration
-│   └── production.json    // Production overrides
-├── logs/                  // Log files (gitignored)
-├── tests/                 // Jest test files
-├── .env.example          // Environment template
-├── .gitignore
-├── package.json
-├── ecosystem.config.js    // PM2 configuration
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
-
-```
-
-## Performance Requirements
-
-- **Latency**: < 100ms message routing
-- **Throughput**: Handle 100+ messages/second
-- **Memory**: < 256MB RAM usage
-- **CPU**: < 5% CPU usage idle
-- **Uptime**: 99.9% availability target
-
-## Testing Requirements
-
-### Unit Tests
-- Message parsing/building
-- Channel mapping
-- Rate limiting
-- Sanitization
-
-### Integration Tests
-- TCP connection handling
-- Discord API interaction
-- End-to-end message flow
-- Reconnection logic
-
-### Load Testing
-- High message volume
-- Concurrent channels
-- Connection stability
-- Memory leak detection
-
-## Future Enhancements
-
-1. **Web Dashboard**: Real-time statistics and configuration
-2. **Command Bridge**: Execute MUD commands from Discord
-3. **Rich Embeds**: Enhanced message formatting
-4. **Presence Sync**: Show online players in Discord
-5. **TLS Support**: Encrypted MUD connection
-6. **Multi-MUD Support**: Bridge multiple MUD servers
-7. **Database Integration**: Message history and analytics
-8. **Webhook Support**: Alternative to bot for sending
-9. **Voice Integration**: Text-to-speech for important messages
-10. **Mobile App**: Management interface for administrators
-
-## Compatibility Notes
-
-- **Node.js Version**: 24.18.0 or higher
-- **npm Version**: 12.0.1 or higher
-- **Discord.js**: Version 14.x for latest features
-- **Operating System**: Linux/macOS/Windows compatible
-- **MUD Protocol**: Compatible with LuminariMUD TCP JSON protocol
-
-## Support and Documentation
-
-- Comprehensive README with setup instructions
-- API documentation for extensibility
-- Troubleshooting guide
-- Configuration examples
-- Docker deployment guide
-- PM2 cluster mode documentation
-
-## License Considerations
-
-The bridge should be licensed compatibly with LuminariMUD's license to allow integration and distribution as part of the complete system.
+Use the [deployment guide](deploy.md) for local Node, one PM2 fork instance, and
+explicit container loopback/TLS topology. The application does not implement
+Discord-to-game command execution, dynamic admin commands, a web dashboard,
+database history, or multi-worker delivery coordination.

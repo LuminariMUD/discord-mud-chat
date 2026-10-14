@@ -1,123 +1,51 @@
-/**************************************************************************
- *  File: discord_bridge.h                            Part of LuminariMUD *
- *  Usage: Discord chat bridge integration - header file                  *
- *                                                                         *
- *  All rights reserved.  See license for complete information.            *
- *                                                                         *
- *  Copyright (C) 2025 LuminariMUD                                        *
- **************************************************************************/
+/* Copyright (C) 2025 LuminariMUD. See the repository license.
+ * Generic Linux/POSIX C89 sample. This is not the native Duris module. */
+#ifndef SAMPLE_DISCORD_BRIDGE_H
+#define SAMPLE_DISCORD_BRIDGE_H
 
-#ifndef _DISCORD_BRIDGE_H_
-#define _DISCORD_BRIDGE_H_
+#include <stddef.h>
 
-#include "structs.h"
-#include "comm.h"
+#define DISCORD_MAX_RECORD_BYTES (1024UL * 1024UL)
+#define DISCORD_MAX_QUEUED_BYTES (4UL * (DISCORD_MAX_RECORD_BYTES + 1UL))
+#define DISCORD_MAX_QUEUED_EVENTS 256UL
 
-/* Configuration constants */
-#define DISCORD_BRIDGE_PORT 8181
-#define DISCORD_BRIDGE_MAX_MSG_LEN 65535
-#define DISCORD_BRIDGE_BUFFER_SIZE 4096
-#define DISCORD_JSON_BUFFER_SIZE 8192
-#define DISCORD_MAX_RECORD_BYTES (1024 * 1024)
-#define DISCORD_MAX_CHANNELS 20
-#define DISCORD_CONNECTION_TIMEOUT 300  /* 5 minutes idle timeout */
-#define DISCORD_RATE_LIMIT_MESSAGES 10  /* Max messages per window */
-#define DISCORD_RATE_LIMIT_WINDOW 1     /* Window size in seconds */
-#define DISCORD_AUTH_TOKEN_SIZE 64      /* Size of auth token */
+/* Called on the game thread with borrowed strings valid until return.
+ * Return nonzero only if your adapter accepts the channel/message.
+ * Display as data; never send these strings to a command interpreter.
+ * The callback may enqueue output but must not reinitialize, shut down, or
+ * recursively process the transport before returning.
+ * A NULL callback disables incoming chat, while still consuming controls. */
+typedef int (*discord_chat_callback)(const char *channel, const char *name,
+                                    const char *message, int emoted, void *context);
 
-/* Discord bridge state */
-#define DISCORD_STATE_DISCONNECTED 0
-#define DISCORD_STATE_CONNECTED 1
-#define DISCORD_STATE_AUTHENTICATED 2
-
-/* Message types */
-#define DISCORD_MSG_NORMAL 0
-#define DISCORD_MSG_EMOTE 1
-
-/* Rate limiting structure */
-struct discord_rate_limit {
-    int message_count;         /* Messages in current window */
-    time_t window_start;       /* Start of current window */
+struct discord_bridge_config {
+    unsigned short port;       /* 8181 normally; 0 selects an ephemeral test port. */
+    size_t max_record_bytes;    /* 0 defaults to 1 MiB; otherwise 128..1 MiB. */
+    const char *auth_token;     /* Copied at init; NULL/empty disables auth. */
+    discord_chat_callback on_chat;
+    void *context;
 };
 
-/* Channel configuration structure */
-struct discord_channel_config {
-    char mud_channel[64];      /* MUD channel name */
-    char discord_name[64];     /* Discord channel name */ 
-    int enabled;               /* Is this channel bridge enabled? */
-    int filter_emotes;         /* Filter emote messages? */
-    int scmd;                  /* MUD subcmd for this channel */
-    struct discord_rate_limit rate_limit; /* Per-channel rate limiting */
+struct discord_bridge_status {
+    int listening, connected, authenticated;
+    unsigned short port;
+    size_t queued_bytes, queued_events;
+    unsigned long sent, received, dropped, rejected, rejected_clients, auth_failures;
 };
 
-/* Discord bridge structure */
-struct discord_bridge_data {
-    socket_t server_socket;    /* Server socket for accepting connections */
-    socket_t client_socket;    /* Connected Discord bot client */
-    int state;                 /* Connection state */
-    char inbuf[DISCORD_BRIDGE_BUFFER_SIZE];  /* Input buffer */
-    int inbuf_len;            /* Current input buffer length */
-    char outbuf[DISCORD_BRIDGE_BUFFER_SIZE]; /* Output buffer */
-    int outbuf_len;           /* Current output buffer length */
-    time_t last_activity;     /* Last activity timestamp */
-    time_t connection_time;   /* When connection was established */
-    int messages_sent;        /* Statistics: messages sent to Discord */
-    int messages_received;    /* Statistics: messages received from Discord */
-    int messages_dropped;     /* Statistics: messages dropped due to rate limiting */
-    int oversized_records_dropped; /* Statistics: records dropped by the byte limit */
-    size_t max_record_bytes;  /* Configured UTF-8 JSON record limit */
-    char auth_token[DISCORD_AUTH_TOKEN_SIZE]; /* Authentication token */
-    int authenticated;        /* Is connection authenticated? */
-    struct discord_channel_config channels[DISCORD_MAX_CHANNELS];
-    int num_channels;         /* Number of configured channels */
-};
-
-/* Global Discord bridge instance */
-extern struct discord_bridge_data *discord_bridge;
-
-/* Function prototypes */
-
-/* Initialization and shutdown */
-void init_discord_bridge(void);
+/* Own all calls on one game thread. Returns 0 on invalid settings/bind/allocation
+ * failure and leaves this optional endpoint closed. No socket is opened before
+ * init. Binds only 127.0.0.1; remote/token use requires a TLS terminator. */
+int init_discord_bridge(const struct discord_bridge_config *config);
 void shutdown_discord_bridge(void);
-void load_discord_config(void);
-void save_discord_config(void);
+void process_discord_input(void);  /* Connection phase: nonblocking, fixed budget. */
+void process_discord_output(void); /* Output phase: nonblocking, fixed budget. */
+struct discord_bridge_status get_discord_bridge_status(void);
 
-/* Connection management */
-int start_discord_server(int port);
-void accept_discord_connection(void);
-void close_discord_connection(void);
-void process_discord_input(void);
-void process_discord_output(void);
+/* Caller supplies plain UTF-8 (strip game colors/controls at its own boundary).
+ * Returns 1 for whole-event admission; 0 for a whole-event drop. No truncation,
+ * implicit channel allowlist, or replay. Sent counts socket completion, not
+ * Discord receipt. Normal messages use 0, emotes use 1. */
+int send_to_discord(const char *channel, const char *name, const char *message, int emoted);
 
-/* Message handling */
-void send_to_discord(const char *channel, const char *name, const char *message, int emoted);
-void receive_from_discord(const char *json_data);
-void route_discord_to_mud(const char *channel, const char *name, const char *message);
-void route_mud_to_discord(int subcmd, struct char_data *ch, const char *message, int emoted);
-
-/* JSON processing */
-char *build_discord_json(const char *channel, const char *name, const char *message, int emoted);
-int parse_discord_json(const char *json_str, char *channel, char *name, char *message);
-
-/* Channel management */
-struct discord_channel_config *find_discord_channel_by_mud(const char *mud_channel);
-struct discord_channel_config *find_discord_channel_by_discord(const char *discord_name);
-struct discord_channel_config *find_discord_channel_by_scmd(int scmd);
-void add_discord_channel(const char *mud_channel, const char *discord_name, int scmd, int enabled);
-void remove_discord_channel(const char *mud_channel);
-void toggle_discord_channel(const char *mud_channel, int enabled);
-
-/* Utility functions */
-char *strip_mud_colors(const char *text);
-int is_discord_bridge_active(void);
-void discord_bridge_status(struct char_data *ch);
-void discord_bridge_statistics(struct char_data *ch);
-int check_discord_rate_limit(struct discord_channel_config *channel);
-void check_discord_timeout(void);
-
-/* Command handlers */
-ACMD(do_discord);
-ACMD(do_discord_config);
-
-#endif /* _DISCORD_BRIDGE_H_ */
+#endif
