@@ -1,4 +1,5 @@
-# Use the latest Node.js LTS release on Alpine Linux
+# syntax=docker/dockerfile:1
+# Pinned Node.js and Alpine versions for reproducible production builds
 FROM node:26.11.1-alpine3.24@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a
 
 # Set working directory
@@ -8,7 +9,9 @@ WORKDIR /app
 COPY package*.json ./
 
 # Use the package manager version declared by the project and install production dependencies
-RUN npm install --global "$(node -p 'require("./package.json").packageManager')" && \
+RUN --mount=type=secret,id=proxy_ca \
+    if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi && \
+    npm install --global "$(node -p 'require("./package.json").packageManager')" && \
     npm ci --omit=dev && \
     npm cache clean --force
 

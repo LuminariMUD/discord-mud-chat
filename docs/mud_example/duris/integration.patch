@@ -1,0 +1,225 @@
+diff --git a/help/duris_help_parsed.hlp b/help/duris_help_parsed.hlp
+index 24d9d01f8..f3d1fff5b 100644
+--- a/help/duris_help_parsed.hlp
++++ b/help/duris_help_parsed.hlp
+@@ -16778,6 +16778,10 @@ currently on the MUD (if there are any).  Certain guidelines should be
+ followed when petitioning:
+ * Do not inquire if gods are online. Describe your problem in details
+ so they can come back to it later when they have time.
++When the optional Discord petition feed is enabled, accepted petitions and
++staff ptell replies may also appear in a staff-only Discord channel, even when
++no gods are online. Discord posts cannot reply into the game. Native petition
++recipients, toggles, and logs remain unchanged; the feed is best effort.
+ ==See also==
+ gods, togglepetition, website, forums, bug, idea, typo, tell
+ The following help topics also matched your search:
+diff --git a/lib/information/help_index b/lib/information/help_index
+index 7b013362c..901e7cbb2 100755
+--- a/lib/information/help_index
++++ b/lib/information/help_index
+@@ -6766,6 +6766,11 @@ This is exactly like tell, except that <text> is broadcast to all gods
+ with petition toggled on, to let them know that you responded to a
+ particular petition.
+ 
++When enabled, the optional staff-only Discord petition feed also receives one
++copy of an accepted ptell, labeled with its sender and target. Concealed names
++are shown as Someone. Discord posts cannot become game replies. The existing
++native recipients, toggles, and logs are unchanged; delivery is best effort.
++
+ Example:
+         Oinkoink petitions 'Why is the sky blue?'
+ 
+diff --git a/src/Makefile b/src/Makefile
+index a0d5d2b28..adf68a12c 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -196,6 +196,8 @@ OBJS =  $(SHIP_OBJS) \
+ 				combat/chaos_config.o \
+ 				net/command_latency.o \
+ 				 net/comm.o \
++				 net/discord_bridge.o \
++				 net/discord_petition.o \
+ 				 persistence/copyover.o \
+ 				 core/common.o \
+ 				 world/condition.o \
+diff --git a/src/cmd/actcomm.c b/src/cmd/actcomm.c
+index 7eecccb52..ff8592c49 100644
+--- a/src/cmd/actcomm.c
++++ b/src/cmd/actcomm.c
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include "core/prototypes.h"
++#include "net/discord_petition.h"
+ #include "player/output_message.h"
+ #include "cmd/information_cache.h"
+ #include "cmd/help_cache.h"
+@@ -278,6 +279,7 @@ void do_petition(P_char ch, char *argument, int /*cmd*/)
+ 		send_to_char("Petition what?\r\n", ch);
+ 	else if (IS_PC(ch))
+ 	{
++		discord_petition_export(ch, argument);
+ 		if (IS_SET(ch->specials.act, PLR_ECHO))
+ 		{
+ 			snprintf(
+diff --git a/src/cmd/actwiz.c b/src/cmd/actwiz.c
+index 09cf00503..be7f937ec 100644
+--- a/src/cmd/actwiz.c
++++ b/src/cmd/actwiz.c
+@@ -9,6 +9,7 @@
+  */
+ 
+ #include "core/prototypes.h"
++#include "net/discord_petition.h"
+ #include "account/creation_availability_config.h"
+ #include "net/comm.h"
+ #include "world/db.h"
+@@ -6551,44 +6552,41 @@ void do_vis(P_char ch, char *argument, int /*cmd*/)
+ 
+ namespace
+ {
+-	struct demote_context
+-	{
+-		uint32_t administrator_pid;
+-	};
++struct demote_context
++{
++	uint32_t administrator_pid;
++};
+ 
+-	void demote_committed(P_char victim, bool committed, const epic_command_result &,
+-			      unsigned int, const uint8_t *raw_context, size_t context_size)
++void demote_committed(P_char victim, bool committed, const epic_command_result &, unsigned int,
++		      const uint8_t *raw_context, size_t context_size)
++{
++	if (!committed)
+ 	{
+-		if (!committed)
+-		{
+-			send_to_char(
+-				"The administrative epic reset failed; demotion was not applied.\n",
+-				victim);
+-			return;
+-		}
+-		for (int skill = 0; skill < MAX_SKILLS; ++skill)
+-			victim->only.pc->skills[skill].learned = 0;
+-		NewbySkillSet(victim, TRUE);
+-		victim->points.max_mana = 0;
+-		victim->points.max_vitality = 0;
+-		victim->specials.conditions[0] = 24;
+-		victim->specials.conditions[1] = 24;
+-		victim->specials.conditions[2] = 0;
+-		do_start(victim, 0);
+-		send_to_char("You have just been demoted to level one... oh well.\n", victim);
+-		logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset",
+-		      GET_NAME(victim));
+-		if (context_size == sizeof(demote_context))
+-		{
+-			demote_context context = {};
+-			memcpy(&context, raw_context, sizeof(context));
+-			P_char administrator = find_player_by_pid(context.administrator_pid);
+-			if (administrator)
+-				send_to_char(
+-					"The demotion and epic reset committed successfully.\n",
+-					administrator);
+-		}
++		send_to_char("The administrative epic reset failed; demotion was not applied.\n",
++			     victim);
++		return;
++	}
++	for (int skill = 0; skill < MAX_SKILLS; ++skill)
++		victim->only.pc->skills[skill].learned = 0;
++	NewbySkillSet(victim, TRUE);
++	victim->points.max_mana = 0;
++	victim->points.max_vitality = 0;
++	victim->specials.conditions[0] = 24;
++	victim->specials.conditions[1] = 24;
++	victim->specials.conditions[2] = 0;
++	do_start(victim, 0);
++	send_to_char("You have just been demoted to level one... oh well.\n", victim);
++	logit(LOG_WIZ, "%s was demoted to level 1 after a committed epic reset", GET_NAME(victim));
++	if (context_size == sizeof(demote_context))
++	{
++		demote_context context = {};
++		memcpy(&context, raw_context, sizeof(context));
++		P_char administrator = find_player_by_pid(context.administrator_pid);
++		if (administrator)
++			send_to_char("The demotion and epic reset committed successfully.\n",
++				     administrator);
+ 	}
++}
+ } // namespace
+ 
+ void do_demote(P_char ch, char *argument, int /*cmd*/)
+@@ -7622,6 +7620,7 @@ void do_ptell(P_char ch, char *arg, int /*cmd*/)
+ 		send_to_char("That person can't hear you.\n", ch);
+ 		return;
+ 	}
++	discord_petition_export(ch, msg, vict);
+ 	if (ch->desc)
+ 	{
+ 		if (IS_SET(ch->specials.act, PLR_ECHO))
+diff --git a/src/net/comm.c b/src/net/comm.c
+index c55c6a0d9..0249e3247 100644
+--- a/src/net/comm.c
++++ b/src/net/comm.c
+@@ -30,6 +30,7 @@
+ #include "core/structs.h"
+ #include "telemetry/telemetry_runtime.h"
+ #include "net/comm.h"
++#include "net/discord_bridge.h"
+ #include "net/session_input.h"
+ #include "net/output_style.h"
+ #include "net/chat_presentation.h"
+@@ -1512,6 +1513,22 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
+ 	//PROFILE_END(process_signal_shutdown_pending);
+ 	persistence_log_poll();
+ 	checkpointing();
++	discord_bridge_poll();
++	static uint64_t discord_report_at = 0;
++	if (loop_monotonic_us() >= discord_report_at)
++	{
++		discord_report_at = loop_monotonic_us() + 60000000;
++		const auto bridge = discord_bridge_get_status();
++		if (bridge.listening)
++			logit(LOG_STATUS,
++			      "Discord bridge: connected=%d authenticated=%d queued=%zu sent=%llu dropped=%llu rejected=%llu clients_rejected=%llu auth_failed=%llu",
++			      bridge.connected, bridge.authenticated, bridge.queued_events,
++			      (unsigned long long)bridge.sent_events,
++			      (unsigned long long)bridge.dropped_events,
++			      (unsigned long long)bridge.rejected_records,
++			      (unsigned long long)bridge.rejected_clients,
++			      (unsigned long long)bridge.auth_failures);
++	}
+ 
+ 	if ((last_desc_per_hour_reset + 3600) <= time(0))
+ 	{
+@@ -1938,6 +1955,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
+ 
+ static void run_output_phase(game_loop_pulse_context &ctx)
+ {
++	discord_bridge_flush();
+ 	const uint64_t loop_tick = ctx.loop_tick;
+ 	P_desc point, next_point;
+ 
+@@ -2595,6 +2613,11 @@ void game_loop(int port, int sslport)
+ 		}
+ 	}
+ 
++	// The JSON bridge is recreated after exec, never inherited as a player socket.
++	if (!discord_bridge_init())
++		logit(LOG_STATUS,
++		      "WARNING: Discord bridge failed to start; check DURIS_DISCORD settings or port availability");
++
+ 	// store in file-scope statics for copyover access
+ 	mother_desc = s;
+ 	mother_desc_ssl = S;
+@@ -2682,6 +2705,8 @@ resume_game_loop:
+ 		return;
+ 	}
+ 
++	discord_bridge_shutdown();
++
+ 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
+ 	// failure is reported, never a reason to keep running. The writer gets 30 s for
+ 	// what is queued; run_the_game() names whatever it could not write once nothing

@@ -1,478 +1,92 @@
-# MUD Integration Technical Requirements
+# MUD integration requirements
 
-## Executive Summary
-This document outlines the comprehensive technical requirements for MUD-side implementation to integrate with the Discord chat bridge. The MUD must implement a TCP socket server that exchanges JSON-formatted messages with the Discord bridge client.
+The MUD supplies a dedicated JSON **server** endpoint; Node connects as its
+client. A player Telnet/TLS, GMCP, or WebSocket endpoint is a different protocol.
+Use the [shared protocol](protocol.md) as the wire contract.
 
-**Latest Update**: The Discord bridge application has been fully refactored and now includes file logging, PM2 support, and Docker containerization. The protocol remains unchanged for backward compatibility.
+For Duris, use the [native petition guide](duris.md) and
+[matching C++20 sample](mud_example/duris/README.md). For other MUDs, use the
+[generic Linux/POSIX C89/cJSON sample](mud_example/README.md) with an adapter for
+your own channel, permission, rendering and lifecycle rules. The generic harness
+is not an upstream LuminariMUD/CircleMUD build or a claim of live compatibility.
 
-## Network Protocol Specifications
+## Wire and controls
 
-### Connection Requirements
-- **Protocol**: TCP/IP Socket
-- **Connection Type**: Persistent TCP connection
-- **Role**: MUD acts as TCP server, Discord bridge acts as TCP client
-- **Port**: Configurable (example: 8181)
-- **IP Binding**: Bind plaintext listeners to `127.0.0.1`; remote access requires a certificate-validating TLS listener or a TLS terminator that forwards only over loopback
+Send complete UTF-8 JSON objects terminated by LF. TCP reads can fragment inside
+UTF-8 characters or contain several records. Escape controls inside JSON; do not
+hand-concatenate names/text. Tolerate unknown optional fields for compatibility.
 
-### Connection Management
-The MUD server must handle:
-- **Accept incoming connections** from the Discord bridge client
-- **Maintain persistent connections** - do not close after each message
-- **Handle connection drops gracefully** - the Discord bridge will automatically reconnect
-- **Support reconnection attempts** - Discord bridge retries up to 5 times with 30-second delays
-
-## Message Protocol
-
-### Message Format
-All communication uses JSON-encoded messages sent over the TCP socket.
-
-#### MUD to Discord Message Structure
 ```json
-{
-    "channel": "string",    // MUD channel name (required)
-    "name": "string",       // Player/character name (required)
-    "message": "string",    // Message content (required)
-    "emoted": 0 | 1        // Optional: 1 for emotes, 0 for regular messages
-}
+{"channel":"gossip","name":"Ayla","message":"Hello","emoted":0}
+{"channel":"auction","name":"Ayla","message":"Ayla raises a hand.","emoted":1}
 ```
 
-#### Discord to MUD Message Structure
-```json
-{
-    "channel": "string",    // MUD channel name (required)
-    "name": "string",       // Discord username/nickname (required, emoji stripped)
-    "message": "string"     // Message content (required, emoji stripped by default)
-}
-```
+Chat requires string `channel`, `name`, and `message`; optional `emoted` is a
+finite number. Numeric 1 means emote presentation, without added italics.
+Channel names are arbitrary and case-sensitive; Node's config holds Discord IDs.
+Discord ingress has the same strings and does not require `emoted`.
 
-### Message Handling Requirements
+Consume `auth` and `heartbeat` independently of chat. Optional auth is sent first
+after validated TLS, and heartbeat `ping` is sent every 240 seconds. Neither
+requires an acknowledgment. Never broadcast controls to players. With a token,
+reject chat before authentication; do not compare a truncated or NUL-prefixed
+secret. Keep tokens in protected environment variables and omit them from logs.
 
-#### Receiving Messages (Discord to MUD)
-1. **Parse incoming JSON** from the TCP socket
-2. **Extract fields**: `channel`, `name`, `message`
-3. **Route to appropriate MUD channel** based on the `channel` field
-4. **Display in MUD** with format: `[Discord] Name: Message` (or similar)
-5. **Handle malformed JSON** gracefully without dropping connection
+Both sides enforce the configured record byte limit (default 1 MiB before LF).
+Accept the exact boundary; discard a whole oversized record, or discard through
+LF if it is unfinished, then recover. Malformed JSON/schema must not prevent
+later valid records. Reset buffers, decoder/auth state and queued writes on
+connection loss. Never concatenate a previous connection's partial record with
+a new one.
 
-#### Sending Messages (MUD to Discord)
-1. **Capture chat messages** from configured MUD channels
-2. **Build JSON message** with required fields
-3. **Include player name** from the MUD character/account
-4. **Send as raw JSON string** over the TCP socket
-5. **Include a newline delimiter** after every JSON message (required; TCP chunks are not message boundaries)
+## Game boundary
 
-### Data Validation
+Capture each selected, accepted player command once, after its rejection checks
+and outside recipient loops. Preserve permission checks, recipient toggles,
+echo, logging, GMCP and native visibility. Disabled or overloaded bridge output
+must not block or suppress native delivery. Strip game color markup/terminal
+controls at this boundary using the game's own parser; preserve valid UTF-8 and
+literal `@`, dollars and JSON-sensitive punctuation.
 
-Both peers must enforce `mud_max_record_bytes` (default 1,048,576 bytes) on the
-UTF-8 bytes in each newline-delimited record. Discard an oversized complete
-record, or discard an oversized incomplete record through its next newline,
-then continue processing later records without closing the connection.
+For generic bidirectional chat, implement a narrow adapter for chosen wire
+channels such as `gossip`, `auction`, or `gratz`. Apply native recipient policy,
+length/rate limits and output escaping. Treat author/content as data, use literal
+format strings, and never dispatch it through the command interpreter or a
+privileged fake character. Keep adapter output separate from player-command
+exports to avoid loops; usernames are not a reliable origin marker.
 
-#### Incoming Messages (from Discord)
-- **Maximum message length**: 65,535 characters (configurable)
-- **Empty messages**: Should be ignored
-- **Special characters**: Handle Unicode/UTF-8 properly
-- **Emoji handling**: Emojis will be stripped by default on Discord side
+Node mappings are bidirectional when `direction` is omitted or `both`. Set
+`mud_to_discord` for one-way mappings, and enforce the same rule at the MUD
+endpoint. The generic sample disables chat callbacks when `on_chat` is NULL.
+Duris has no chat callback/dispatcher at all and publishes only accepted
+petition/ptell events to its single staff feed.
 
-#### Outgoing Messages (to MUD)
-- **Message sanitization**: Remove or escape MUD color codes/formatting
-- **Player names**: Should be the actual character/player name in the MUD
-- **Channel names**: Must match exactly with configured channel mappings
+## Network and lifecycle
 
-## Channel Configuration
+Keep plaintext on literal loopback. Remote access requires a valid TLS listener
+or a certificate-validated terminator forwarding only to the protected loopback
+backend. Node refuses plaintext tokens and remote/private-address plaintext.
+Container loopback is a separate namespace unless explicitly shared; see
+[deployment](deploy.md).
 
-### Channel Mapping
-The MUD must support configurable channel mappings. Each mapped channel requires:
-- **MUD channel identifier** (string) - internal MUD channel name/ID
-- **Enable/disable flag** - ability to toggle individual channel bridges
-- **Permissions** - optional access control for who can use bridged channels
+Use nonblocking sockets, bounded input/output storage, finite per-pulse work,
+and partial-write offsets. Count retained whole events during partial sends.
+Reject extra clients without replacing the active one. Handle EINTR/EAGAIN/EOF
+and errors without busy loops or blocking the game. Check descriptor bounds if
+using select; the supplied implementations use poll instead. Drop whole events
+on overflow/disconnect, count losses, and do not replay uncertain partial sends.
 
-### Example Channel Configuration
-```
-MUD Channel     | Status  | Description
-----------------|---------|------------------
-"gossip"        | Enabled | General gossip channel
-"auction"       | Enabled | Auction/trading channel
-"gratz"         | Enabled | Congratulations channel
-```
+Mark sockets close-on-exec. Initialize the listener after successful game
+copyover and leave it usable if exec fails. Close on ordinary shutdown. Add
+lifecycle checks specific to your game; a unit test of close-on-exec alone does
+not prove player saves or session recovery.
 
-## Implementation Requirements
+## Evidence before rollout
 
-### Core Features
-
-#### 1. TCP Socket Server
-```pseudocode
-function startDiscordBridge() {
-    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
-    server = createTCPServer(port: 8181)
-    
-    server.onConnection = function(socket) {
-        log("Discord bridge connected from " + socket.address)
-        buffer = ""
-        discardingOversizedRecord = false
-
-        socket.onData = function(data) {
-            decodedData = decodeUTF8Incrementally(data)
-            if (discardingOversizedRecord) {
-                if (decodedData does not contain "\n") return
-                decodedData = contentAfterFirstNewline(decodedData)
-                discardingOversizedRecord = false
-            }
-
-            buffer += decodedData
-            while (buffer contains "\n") {
-                record, buffer = splitAtFirstNewline(buffer)
-                if (record is blank) continue
-                if (utf8ByteLength(record) > maxRecordBytes) {
-                    log("Oversized JSON record discarded")
-                    continue
-                }
-
-                try {
-                    message = parseJSON(record)
-                    routeMessageToMUD(message)
-                } catch (error) {
-                    log("Invalid JSON received: " + error)
-                }
-            }
-
-            if (utf8ByteLength(buffer) > maxRecordBytes) {
-                log("Oversized incomplete JSON record discarded")
-                buffer = ""
-                discardingOversizedRecord = true
-            }
-        }
-        
-        socket.onClose = function() {
-            log("Discord bridge disconnected")
-        }
-    }
-}
-```
-
-#### 2. Message Router
-```pseudocode
-function routeMessageToMUD(message) {
-    if (!message.channel || !message.name || !message.message) {
-        return // Invalid message structure
-    }
-    
-    mudChannel = getMUDChannel(message.channel)
-    if (mudChannel && mudChannel.isEnabled) {
-        broadcastToChannel(
-            channel: mudChannel,
-            sender: "[Discord] " + message.name,
-            message: message.message
-        )
-    }
-}
-```
-
-#### 3. MUD Event Handler
-```pseudocode
-function onMUDChannelMessage(channel, player, message) {
-    if (!isDiscordBridgeEnabled(channel)) {
-        return
-    }
-    
-    discordMessage = {
-        "channel": getDiscordChannelName(channel),
-        "name": player.name,
-        "message": stripMUDFormatting(message),
-        "emoted": isEmote(message) ? 1 : 0
-    }
-    
-    record = JSON.stringify(discordMessage)
-    maxRecordBytes = configuredValue("mud_max_record_bytes", 1048576)
-    if (utf8ByteLength(record) > maxRecordBytes) {
-        log("Oversized Discord bridge record dropped")
-        return
-    }
-
-    sendToDiscordBridge(record + "\n")
-}
-```
-
-### Optional Features
-
-#### 1. Emote Support
-- Detect emote/action messages in MUD
-- Set `"emoted": 1` flag in JSON
-- Discord bridge will format as: `*Name performs action*` instead of `Name: message`
-
-#### 2. Connection Authentication
-- Optional authentication token/password
-- Require certificate-validated TLS whenever authentication is enabled
-- Send only after the TLS connection is established
-- Do not send MUD-to-Discord records until required client authentication succeeds
-- Reject unauthorized connections
-
-#### 3. Rate Limiting
-- Implement message rate limiting per channel
-- Prevent spam/flooding
-- Suggested: 10 messages per second per channel maximum
-
-#### 4. Message Filtering
-- Filter out system messages
-- Exclude private messages/tells
-- Remove MUD-specific formatting codes
-
-## Security Considerations
-
-### Network Security
-1. **Firewall rules**: Only allow connections from authorized Discord bridge IPs
-2. **Connection limits**: Limit to one active Discord bridge connection
-3. **TLS/SSL**: Provide TLS when the Discord bridge uses a hostname or connects from a remote host; plaintext transport is accepted only over literal loopback IPs
-
-### Content Security
-1. **Input validation**: Validate all incoming JSON fields
-2. **Injection prevention**: Sanitize Discord usernames and messages
-3. **Command filtering**: Prevent Discord users from executing MUD commands
-4. **Length limits**: Enforce maximum message lengths
-
-### Access Control
-1. **Channel permissions**: Respect existing MUD channel access controls
-2. **User filtering**: Option to filter messages from specific Discord users
-3. **Bridge toggle**: Global on/off switch for Discord bridge
-
-## Configuration File Example
-
-### MUD-side configuration (example format)
-```json
-{
-    "discord_bridge": {
-        "enabled": true,
-        "listen_port": 8181,
-        "listen_ip": "127.0.0.1",
-        "max_message_length": 65535,
-        "connection_timeout": 300,
-        "channels": [
-            {
-                "mud_channel": "gossip",
-                "discord_name": "gossip",
-                "enabled": true,
-                "filter_emotes": false
-            },
-            {
-                "mud_channel": "auction",
-                "discord_name": "auction", 
-                "enabled": true,
-                "filter_emotes": false
-            },
-            {
-                "mud_channel": "gratz",
-                "discord_name": "gratz",
-                "enabled": true,
-                "filter_emotes": false
-            }
-        ],
-        "message_format": {
-            "from_discord": "[Discord] %name%: %message%",
-            "to_discord": "standard"
-        }
-    }
-}
-```
-
-## Testing Checklist
-
-### Basic Functionality
-- [ ] TCP server starts and listens on configured port
-- [ ] Accepts connection from Discord bridge
-- [ ] Receives and parses JSON messages correctly
-- [ ] Routes messages to correct MUD channels
-- [ ] Sends MUD messages to Discord bridge
-- [ ] Handles connection drops gracefully
-- [ ] Supports reconnection from Discord bridge
-
-### Message Handling
-- [ ] Processes regular chat messages
-- [ ] Handles emotes/actions correctly
-- [ ] Filters out unwanted message types
-- [ ] Respects message length limits
-- [ ] Handles Unicode/special characters
-- [ ] Strips MUD formatting codes
-
-### Error Handling
-- [ ] Handles malformed JSON without crashing
-- [ ] Manages network errors gracefully
-- [ ] Logs errors appropriately
-- [ ] Continues operation after errors
-- [ ] Provides meaningful error messages
-
-### Performance
-- [ ] Handles high message volume
-- [ ] Minimal latency (< 100ms)
-- [ ] Efficient memory usage
-- [ ] No memory leaks over time
-- [ ] Scales with multiple channels
-
-## Monitoring and Logging
-
-### Recommended Logging
-1. **Connection events**: Connect, disconnect, reconnect attempts
-2. **Message statistics**: Messages sent/received per channel
-3. **Error events**: JSON parsing errors, network errors
-4. **Performance metrics**: Message latency, queue sizes
-
-**Note**: The Discord bridge now includes automatic file logging to `logs/app.log` with timestamps and log levels for better debugging and monitoring.
-
-### Health Checks
-1. **Connection status**: Is Discord bridge connected?
-2. **Message flow**: Last message sent/received timestamp
-3. **Error rate**: Errors per minute/hour
-4. **Channel status**: Which channels are active
-
-## Troubleshooting Guide
-
-### Common Issues and Solutions
-
-#### Discord bridge won't connect
-- Verify TCP server is listening on correct port
-- Check firewall rules
-- Confirm IP address is accessible
-- Review connection logs
-
-#### Messages not appearing in MUD
-- Verify JSON parsing is working
-- Check channel name mapping
-- Confirm channel is enabled
-- Review message routing logic
-
-#### Messages not reaching Discord
-- Ensure JSON format is correct
-- Verify socket write is successful
-- Check for network issues
-- Monitor Discord bridge logs
-
-#### High latency or message delays
-- Check network connection quality
-- Review message queue implementation
-- Monitor server CPU/memory usage
-- Consider implementing message batching
-
-## Support and Maintenance
-
-### Version Compatibility
-- Maintain backward compatibility with message format
-- Version protocol if breaking changes needed
-- Document all protocol changes
-
-### Discord Bridge Deployment Options
-The Discord bridge now supports multiple deployment methods:
-1. **Standard Node.js**: `npm start` or `node src/index.js`
-2. **PM2 Process Manager**: `pm2 start ecosystem.config.js`
-3. **Docker Container**: `docker compose up -d`
-
-### Future Enhancements
-1. **Mutual TLS authentication**
-2. **Certificate rotation automation**
-3. **Compression for high-volume channels**
-4. **Rich message support** (attachments, reactions)
-5. **Command bridge** for MUD commands via Discord
-6. **Presence synchronization** (online player lists)
-
-## Appendix: Sample Implementation
-
-### Python Example (Basic TCP Server)
-```python
-import socket
-import json
-import threading
-import codecs
-
-class DiscordBridge:
-    def __init__(self, port=8181, max_record_bytes=1024 * 1024):
-        self.port = port
-        self.max_record_bytes = max_record_bytes
-        self.socket = None
-        self.client = None
-        
-    def start(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind(('127.0.0.1', self.port))
-        self.socket.listen(1)
-        print(f"Discord bridge listening on port {self.port}")
-        
-        while True:
-            client, address = self.socket.accept()
-            print(f"Discord bridge connected from {address}")
-            self.client = client
-            self.handle_client()
-    
-    def handle_client(self):
-        buffer = ""
-        decoder = codecs.getincrementaldecoder('utf-8')()
-        discarding_oversized_record = False
-        while True:
-            try:
-                data = self.client.recv(4096)
-                if not data:
-                    break
-
-                decoded_data = decoder.decode(data)
-                if discarding_oversized_record:
-                    if '\n' not in decoded_data:
-                        continue
-                    _, decoded_data = decoded_data.split('\n', 1)
-                    discarding_oversized_record = False
-
-                buffer += decoded_data
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    if len(line.encode('utf-8')) > self.max_record_bytes:
-                        print("Oversized Discord bridge record dropped")
-                        continue
-                    self.process_message(line)
-
-                if len(buffer.encode('utf-8')) > self.max_record_bytes:
-                    print("Oversized incomplete Discord bridge record dropped")
-                    buffer = ""
-                    discarding_oversized_record = True
-
-            except Exception as e:
-                print(f"Error handling client: {e}")
-                break
-                
-        print("Discord bridge disconnected")
-        self.client = None
-    
-    def process_message(self, data):
-        try:
-            message = json.loads(data)
-            # Route message to MUD channel
-            self.route_to_mud(
-                message.get('channel'),
-                message.get('name'),
-                message.get('message')
-            )
-        except json.JSONDecodeError as e:
-            print(f"Invalid JSON received: {e}")
-    
-    def send_to_discord(self, channel, name, message, emoted=0):
-        if not self.client:
-            return
-            
-        data = json.dumps({
-            'channel': channel,
-            'name': name,
-            'message': message,
-            'emoted': emoted
-        })
-        
-        encoded_record = (data + '\n').encode('utf-8')
-        if len(encoded_record) - 1 > self.max_record_bytes:
-            print("Oversized Discord bridge record dropped")
-            return
-
-        try:
-            self.client.sendall(encoded_record)
-        except Exception as e:
-            print(f"Error sending to Discord: {e}")
-    
-    def route_to_mud(self, channel, name, message):
-        # Implement MUD-specific routing logic here
-        print(f"[{channel}] Discord/{name}: {message}")
-```
-
-This document provides comprehensive technical requirements for implementing Discord bridge support on the MUD side. The implementation should focus on reliability, security, and maintainability while providing seamless bidirectional communication between MUD and Discord users.
+Run [generic and native checks](testing.md) appropriate to the chosen sample.
+Verify rejected and accepted commands, both selected directions, scope/privacy,
+fragmentation and escaping, exact/oversized recovery, slow peers, bounded queues,
+reconnect, and successful/failed copyover in an isolated game. Verify the intended
+Discord audience during an authorized rollout. Record revisions and distinguish
+sample tests, game integration and real Discord checks. Do not infer upstream
+compatibility solely from a name in a sample configuration.

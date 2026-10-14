@@ -1,0 +1,2 @@
+# Unified-diff context prefixes are data. The sample checker validates the patch.
+docs/mud_example/duris/integration.patch -whitespace

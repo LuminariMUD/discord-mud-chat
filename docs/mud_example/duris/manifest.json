@@ -1,0 +1,19 @@
+{
+  "base_revision": "7156b32431394a12a5a726d1158e1968dd89b3c7",
+  "tested_revision": "742c38136965245cdb69679cdf1a58d594b074c6",
+  "patch_files": [
+    "src/Makefile",
+    "src/net/comm.c",
+    "src/cmd/actcomm.c",
+    "src/cmd/actwiz.c",
+    "help/duris_help_parsed.hlp",
+    "lib/information/help_index"
+  ],
+  "sha256": {
+    "net/discord_bridge.c": "481aa8cee87f088b69fd609370d777d4048e6f6cf2d28761c633cec57f3b9953",
+    "net/discord_bridge.h": "11bf3636da38bb35b3399aa336b050998d2c9834e640bad142c7050101e49b96",
+    "net/discord_petition.c": "87379c29942fd4ee9db9dc3a22aae179cd7949086243b719ac41345ccf4475c6",
+    "net/discord_petition.h": "1a5c89fd428358a3d9eb8aaca2b1d35bd3e4f1ce9a5e9f9e5af4acabcd53da04",
+    "integration.patch": "5a84b8164de28c718e2c1fbe9fe17ac7d81b0ddf2c78de655c6209e884ec5944"
+  }
+}
