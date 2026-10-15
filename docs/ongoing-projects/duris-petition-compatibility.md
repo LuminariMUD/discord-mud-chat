@@ -1,7 +1,7 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: implementation corrected and locally verified; review and live rollout
-remain open. Updated: 2026-10-15.
+Status: native correction merged; bridge integration is tracked in PR #37.
+Implementation is locally verified; live rollout remains open. Updated: 2026-10-15.
 
 The staff-only feed always identifies petitioners and both reply participants
 by their actual character names. In-game invisibility, hiding, other concealment
@@ -36,11 +36,10 @@ request and do not block implementation review.
 
 - Companion bridge work is published as
   [bridge PR #37](https://github.com/LuminariMUD/discord-mud-chat/pull/37), on
-  `codex/duris-staff-petition-names`. The native and bridge PRs are ready for
-  review.
-- Native fix: commit `e3c72ff54e6bd8412b4af2c77b999ef3125167fd`,
-  [Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102), on
-  `codex/duris-staff-petition-names` in `/home/staging/duris`. The exporter uses
+  `codex/duris-staff-petition-names`. That PR records the bridge merge result.
+- Native fix: [Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102)
+  merged into `master` as `b9847f7df77ed471a23be5afd889d2ef660eb3df`.
+  The exporter uses
   actual sender/target names through the existing bounded text conversion.
   Accepted-command checks and native output/GMCP remain unchanged.
 - Native regressions now cover all five concealment affects for ordinary and
@@ -49,8 +48,11 @@ request and do not block implementation review.
   petitions and replies with both participants concealed. The full-game journey
   expects named staff Discord posts while still asserting the in-game player's
   anonymous hidden-staff reply.
-- The bridge sample matches the native fix revision. Refreshing it also brought
-  in the native endpoint's existing 32-record-per-pulse flood limit, which the
+- The bridge sample matches the merged native fix revision, including its final
+  formatting correction. The old copy failed the native drift check; its bytes,
+  hash and tested revision now match `b9847f7df77ed471a23be5afd889d2ef660eb3df`.
+  Refreshing it also brought in the native endpoint's existing
+  32-record-per-pulse flood limit, which the
   earlier sample lacked. The manifest separates the original integration-hook
   revision from the current tested-module revision; source hooks, current help
   paragraphs, resulting patch hashes, native drift and executable copies are
@@ -59,9 +61,18 @@ request and do not block implementation review.
 - Original bridge PRs #30-#36 and native PRs #83-#87 are integrated; native
   `master` history contains all five squash merges, and GitHub confirms #87 is
   merged. The old open-stack instructions below are historical, not remaining
-  work. The current fix is ready for review; leave merging to review as required
-  by this project's publication policy.
-- Local verification passes: native development build and formatting; native
+  work. Native PR #102 is also merged; bridge PR #37 carries the companion update.
+- Fresh bridge merge verification against the pinned native merge revision:
+  `npm run lint` and all 112 `npm run test:coverage` tests pass on Node 24.18.0
+  and 26.8.1 with npm 12.0.1. Coverage is 98.77% lines, 94.80% branches and
+  94.31% functions; `npm audit --audit-level=high` reports zero vulnerabilities.
+  `python3 scripts/check-duris-sample.py --duris /path/to/pinned-duris` passes
+  normally on Node 24.18.0 and with `SANITIZE=1` on Node 26.8.1, including
+  hashes, exact native bytes, clean-base patch application, compiled command
+  regressions and Node/native integration. The sample refresh is formatting
+  only; full-game and production-container results below are retained evidence.
+- Retained implementation verification: native development build and formatting;
+  native
   command/Node integration normally and under ASan/UBSan; copied-sample checks
   normally and under ASan/UBSan; isolated full-game save/reload, failed and
   successful copyover, and disconnect/disable rollback; native endpoint,
@@ -752,7 +763,8 @@ fixture peer. No sample or documentation change silently enables game ingress.
 ## Proposed Duris bridge configuration
 
 The bridge enforces `direction`; the native endpoint and command hooks are
-merged into Duris `master`. The staff-name correction is in PR #102. The endpoint must also be enabled in Duris.
+merged into Duris `master`, including the staff-name correction in PR #102.
+The endpoint must also be enabled in Duris.
 Node/native command-boundary integration, local/PM2 sample deployment and full
 isolated-game acceptance are verified. Container execution passes both locally
 and on an isolated CI Linux runner; the actual Compose health probe also passes
@@ -862,5 +874,5 @@ delivery remains open in the separate rollout checklist above.
       unverified required behavior keeps implementation completion open.
 
 Implementation and local acceptance are complete for the staff-name correction.
-Review and live rollout remain as recorded in the current handoff. No pending
+Integration and live rollout status are recorded in the current handoff. No pending
 channel-selection or audience decision remains for this initial scope.

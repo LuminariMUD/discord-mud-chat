@@ -1,8 +1,8 @@
 # Duris staff Discord feed: names replaced with Someone
 
 Date: 2026-10-15.
-Status: correction implemented and locally verified in both repositories;
-review and live rollout remain open (2026-10-15).
+Status: native correction merged and locally verified; bridge integration is
+tracked in PR #37. Live rollout remains open (2026-10-15).
 Scope: fix the native server at `/home/staging/duris`, synchronize the bridge's
 sample/tests/docs, and verify the requirements in both project documents.
 
@@ -13,20 +13,22 @@ sample/tests/docs, and verify the requirements in both project documents.
 - [x] Update native help/operator docs and the copied sample with provenance.
 - [x] Run native build/format, relevant regressions, sample and bridge checks.
 - [x] Reconcile the compatibility plan and inspect deployment/audience evidence.
-- [ ] Complete review and production rollout, then verify corrected live events.
+- [x] Complete native review and merge Duris PR #102.
+- [ ] Complete production rollout, then verify corrected live events.
 
-The native fix is commit `e3c72ff54e6bd8412b4af2c77b999ef3125167fd`,
+The native fix merged as `b9847f7df77ed471a23be5afd889d2ef660eb3df` via
 [Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102). Companion samples,
 tests and documentation are in
 [bridge PR #37](https://github.com/LuminariMUD/discord-mud-chat/pull/37).
-The native fix removes
+The sample and its manifest now include the merged native formatting correction;
+the earlier copy failed the exact-byte drift check. The native fix removes
 `public_name()` and the non-trusted reply-sender substitution, using
 `GET_NAME(sender)` and `GET_NAME(target)` through the existing bounded
 `plain_text()` conversion. Native command authorization and recipient visibility
 are unchanged. The bridge's copied modules, help patch and operator guide now
 carry the same behavior; the Node relay itself needed no change.
 
-Verification passed in the current worktrees: native build/format, command/Node
+Retained implementation verification passed: native build/format, command/Node
 integration and copied-sample checks both normally and with ASan/UBSan, and the
 isolated full-game journey through save/reload, failed/successful copyover,
 disconnect, disabled endpoint and shutdown. The native matrix covers five
