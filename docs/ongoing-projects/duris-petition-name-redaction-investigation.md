@@ -16,7 +16,10 @@ sample/tests/docs, and verify the requirements in both project documents.
 - [ ] Complete review and production rollout, then verify corrected live events.
 
 The native fix is commit `e3c72ff54e6bd8412b4af2c77b999ef3125167fd`,
-[Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102). It removes
+[Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102). Companion samples,
+tests and documentation are in
+[bridge PR #37](https://github.com/LuminariMUD/discord-mud-chat/pull/37).
+The native fix removes
 `public_name()` and the non-trusted reply-sender substitution, using
 `GET_NAME(sender)` and `GET_NAME(target)` through the existing bounded
 `plain_text()` conversion. Native command authorization and recipient visibility
@@ -35,7 +38,10 @@ staff name in Discord. The original source would fail these name assertions.
 
 All 112 bridge coverage tests pass on Node 24.18.0, 26.8.1 and 26.11.1; native
 privacy/output/lifecycle/help checks, generic sample sanitizer checks, PM2 and
-container smoke tests also pass. See the
+container smoke tests also pass. The actual Docker Compose health probe passes
+on a nondefault port. An optimized MariaDB production binary was built
+successfully under `bin/tests/duris-staff-names-release/`; it has not been
+installed or deployed. See the
 [current compatibility handoff](duris-petition-compatibility.md#current-handoff-2026-10-15)
 for commands, coverage, sample provenance and read-only deployment evidence.
 

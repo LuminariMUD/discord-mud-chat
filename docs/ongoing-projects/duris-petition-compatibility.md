@@ -34,6 +34,10 @@ request and do not block implementation review.
 
 ## Current handoff (2026-10-15)
 
+- Companion bridge work is published as
+  [bridge PR #37](https://github.com/LuminariMUD/discord-mud-chat/pull/37), on
+  `codex/duris-staff-petition-names`. The native and bridge PRs are ready for
+  review.
 - Native fix: commit `e3c72ff54e6bd8412b4af2c77b999ef3125167fd`,
   [Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102), on
   `codex/duris-staff-petition-names` in `/home/staging/duris`. The exporter uses
@@ -68,10 +72,19 @@ request and do not block implementation review.
   94.31% functions; the dependency audit reports zero vulnerabilities.
 - Generic C89 sample ASan/UBSan, generic/Duris application smoke tests, isolated
   PM2 startup/restart/graceful stop, and a fresh production Docker image with
-  host-loopback relay and health checks pass. Existing generic bidirectional
-  and TLS behavior remains covered. The prior Compose-specific probe result
-  below remains historical; the fresh container check uses the real image and
-  application health endpoint.
+  host-loopback relay and health checks pass. The actual Docker Compose health
+  probe also passes with that production image on nondefault port 51539:
+  both connections healthy, one outbound post, zero inbound posts and zero
+  drops. Temporary containers and images were removed. Existing generic
+  bidirectional and TLS behavior remains covered.
+- The optimized MariaDB production build passes for native commit
+  `e3c72ff54e6bd8412b4af2c77b999ef3125167fd` with
+  `make -C src PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production
+  DMS_BINARY=/home/staging/duris/bin/tests/duris-staff-names-release/dms_new`.
+  The prepared artifact is at that separate test path; its sibling backend
+  stamp is `mariadb/production`, and its SHA-256 is
+  `c574aefc65b72165494b71a5524850ea23aaff842e1a15bdfc54f938f68b7b39`.
+  It has not been installed into `bin/server/` or deployed.
 - Read-only rollout inspection: `#petition` denies `@everyone`; the bridge bot
   can view/send. Morfos has an explicit member grant, confirmed by the owner as
   intended staff on 2026-10-15. Administrator roles Staff, Forger, Zapier, MEE6,
