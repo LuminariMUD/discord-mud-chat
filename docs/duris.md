@@ -113,8 +113,9 @@ Player: I need help with a stuck character.
 Staff -> Player: I am checking that now.
 ```
 
-A concealed staff sender is `Someone -> Player`; concealed target names are also
-redacted. Duris markup and terminal controls are removed, while literal dollars,
+The feed always uses actual character names for petitioners and both reply
+participants, including hidden/invisible characters and staff using mortal fog.
+In-game recipient visibility is unchanged. Duris markup and terminal controls are removed, while literal dollars,
 quotes, backslashes, `@` and valid Unicode survive. Long events split into
 ordered Discord posts of at most 2000 UTF-16 units, with mention parsing disabled
 on every part. A short event produces one post per accepted command, regardless

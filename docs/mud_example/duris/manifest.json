@@ -1,6 +1,6 @@
 {
   "base_revision": "7156b32431394a12a5a726d1158e1968dd89b3c7",
-  "tested_revision": "6ab9b34945625d2ca944008c4b6dc67aaaf2a61f",
+  "tested_revision": "b9847f7df77ed471a23be5afd889d2ef660eb3df",
   "patch_files": [
     "src/Makefile",
     "src/net/comm.c",
@@ -10,10 +10,19 @@
     "lib/information/help_index"
   ],
   "sha256": {
-    "net/discord_bridge.c": "481aa8cee87f088b69fd609370d777d4048e6f6cf2d28761c633cec57f3b9953",
+    "net/discord_bridge.c": "a7bfba49b55c92f7af60a1870538bcc86395d6b9cf2166dd7ad4b05b78888f8a",
     "net/discord_bridge.h": "11bf3636da38bb35b3399aa336b050998d2c9834e640bad142c7050101e49b96",
-    "net/discord_petition.c": "b148fa15f95d1b1806578017408f07f7f1c443575549e3c6cf911326be549f92",
+    "net/discord_petition.c": "2da57c6e5c003cec87c6ff58bbfa9445553a182a6f4046aa90195591178de50d",
     "net/discord_petition.h": "1a5c89fd428358a3d9eb8aaca2b1d35bd3e4f1ce9a5e9f9e5af4acabcd53da04",
-    "integration.patch": "5a84b8164de28c718e2c1fbe9fe17ac7d81b0ddf2c78de655c6209e884ec5944"
+    "integration.patch": "3fcd576d92a4bc4ae82bd20aa20ebb9b83279974457132093d745f75bfefc82b"
+  },
+  "integration_revision": "6ab9b34945625d2ca944008c4b6dc67aaaf2a61f",
+  "patched_sha256": {
+    "src/Makefile": "e6dd4786067a47a0b8491999271d0628e26d4bd7179716d6f69f3b9c533f3444",
+    "src/net/comm.c": "c0070ec2e6695e96f01caf023d8d05785c02010a948a902fc2563a350fecc8cf",
+    "src/cmd/actcomm.c": "0fd7efe1dec25d1ba639215e02ca170c7c591957445f8be87670d050a436af21",
+    "src/cmd/actwiz.c": "150f0fff722f8efbb541651b81a9c145e56519511d0a320b1a819d4efa6a3e54",
+    "help/duris_help_parsed.hlp": "c16f39f7d8feac7b95e71eef5908672b1b84c36292ac021544d1840839b83e1b",
+    "lib/information/help_index": "f7ba9a607868582ab78e02e284d2a563c1994df5866595c33f52bb36c6096117"
   }
 }

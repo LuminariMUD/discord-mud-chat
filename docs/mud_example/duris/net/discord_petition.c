@@ -11,18 +11,6 @@
 
 namespace
 {
-// Discord has no in-game observer privilege. Redact explicit concealment
-// states used by ac_can_see/WIZ_INVIS, including hidden reply targets.
-const char *public_name(char_data *character)
-{
-	if ((IS_TRUSTED(character) && GET_WIZINVIS(character) > 0) ||
-	    IS_AFFECTED(character, AFF_INVISIBLE | AFF_HIDE | AFF_WRAITHFORM) ||
-	    IS_AFFECTED2(character, AFF2_CONCEALMENT) ||
-	    IS_AFFECTED3(character, AFF3_ECTOPLASMIC_FORM))
-		return "Someone";
-	return GET_NAME(character);
-}
-
 bool plain_text(const char *source, std::size_t capacity, std::string &result)
 {
 	// Bound by the actual native name/message buffers before parsing. Refuse
@@ -103,10 +91,10 @@ void discord_petition_export(char_data *sender, const char *message, char_data *
 	if (!status.listening)
 		return;
 	std::string name, text, target_name;
-	const char *sender_name = target && !IS_TRUSTED(sender) ? "Someone" : public_name(sender);
-	if (!status.authenticated || !plain_text(sender_name, MAX_NAME_LENGTH + 1, name) ||
+	// This is a staff audit feed: game concealment must not remove either identity.
+	if (!status.authenticated || !plain_text(GET_NAME(sender), MAX_NAME_LENGTH + 1, name) ||
 	    !plain_text(message, MAX_STRING_LENGTH, text) ||
-	    (target && !plain_text(public_name(target), MAX_NAME_LENGTH + 1, target_name)))
+	    (target && !plain_text(GET_NAME(target), MAX_NAME_LENGTH + 1, target_name)))
 	{
 		discord_bridge_publish(nullptr, nullptr); // account for the whole dropped event
 		return;

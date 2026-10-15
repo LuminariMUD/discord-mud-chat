@@ -2,7 +2,8 @@
 
 These four `net/discord_*` files are byte-for-byte copies of the production
 Duris modules at tested revision
-`6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`. They use Duris's **C++20** build,
+`b9847f7df77ed471a23be5afd889d2ef660eb3df` (merged Duris PR #102).
+They use Duris's **C++20** build,
 cJSON/crypto libraries, character types and ANSI/Unicode utilities. Do not mix
 these with the generic C89 sample one directory above.
 
@@ -10,7 +11,11 @@ these with the generic C89 sample one directory above.
 and petition/ptell help changes. It targets Duris base revision
 `7156b32431394a12a5a726d1158e1968dd89b3c7`. It includes the formatter corrections
 required in the touched `comm.c` file; no complete game files are copied here.
-`manifest.json` records both revisions, patch paths, and sample hashes.
+`manifest.json` records the current tested module revision, the original
+integration revision `6ab9b34945625d2ca944008c4b6dc67aaaf2a61f`, the base revision,
+patch paths, and hashes of both sample files and patched outputs. The original
+hook layout remains reproducible without importing unrelated later game changes;
+the help paragraphs reflect the current staff-name policy.
 
 Prefer the native reviewed branch/PRs when available; it also carries executable
 regression harnesses. To integrate these samples into a clean checkout of the
@@ -33,36 +38,49 @@ ordinary shutdown path. Close-on-exec recreates the listener after copyover;
 failed exec leaves the original endpoint usable.
 
 The endpoint is disabled by default. When enabled it exports only accepted
-petitions and staff replies, strips native color/terminal controls, and redacts
-concealed names. It consumes auth/heartbeat controls and discards all incoming
-chat. Its loopback listener is separate from gameplay ports. Follow the
+petitions and staff replies, strips native color/terminal controls, and retains
+actual character names even when participants are concealed. It consumes only
+auth/heartbeat controls and discards all incoming chat. Its loopback listener is separate from gameplay ports. Follow the
 [Duris operator guide](../../duris.md) for configuration and rollback; the staff
 Discord audience is enforced by Discord permissions.
 Clients have 10 seconds to authenticate when a token is configured, then must
 send a valid heartbeat every 300 seconds (Node sends one every 240 seconds).
 Tokenless clients also have the heartbeat deadline. Expiry uses monotonic time,
 closes the client, and discards queued output; unauthenticated or partial input
-cannot extend the deadline or keep the sole client slot indefinitely.
+cannot extend the deadline or keep the sole client slot indefinitely. More than
+32 incoming records in one pulse disconnects a flooding client before parsing
+the next record, matching the native endpoint.
 
 ## Check drift and execute the copied modules
 
 Use a checkout containing the native command harness (tested revision above),
-with its history available for the base/target patch check:
+with the recorded revisions available in its history for the patch check:
 
 ```sh
 python3 scripts/check-duris-sample.py --duris /path/to/duris
 SANITIZE=1 python3 scripts/check-duris-sample.py --duris /path/to/duris
 ```
 
+The original integration revision predates the squash merges and may be absent
+from a checkout containing only `master`. Fetch it once if needed:
+
+```sh
+git -C /path/to/duris fetch origin 6ab9b34945625d2ca944008c4b6dc67aaaf2a61f
+```
+
 The checker verifies hashes and compares every copied module to the checkout,
-applies the patch to a temporary copy of the recorded base files and compares
-its result to the tested revision. It then compiles the **sample copies** with
+compares copied modules to the tested commit, and applies the patch to temporary
+copies of the recorded base files. It checks the resulting file hashes, source
+hooks against the original integration revision, and updated help paragraphs
+against the current tested revision. It then compiles the **sample copies** with
 native headers and exact production command bodies, runs the native regression
 harness, and runs the real Node/native integration against that binary. Compiled
 artifacts stay under Duris's `bin/tests/` and are removed after the run. No game
 state, environment file, production service, or Discord API is touched.
 
-When native modules/hooks change, regenerate the copies and patch from reviewed
-commits, update both revisions/hashes, and rerun this check. A matching hash alone
+When native modules/hooks change, regenerate the copies and patch from the
+corresponding commits, update the relevant revisions/hashes, and rerun this check.
+Keep the original integration revision while its hooks are unchanged; update
+the tested revision for module or help changes. A matching hash alone
 is not a substitute for compiling and exercising the sample. Full isolated game
 boot/save/copyover acceptance remains a distinct check in the project handoff.
