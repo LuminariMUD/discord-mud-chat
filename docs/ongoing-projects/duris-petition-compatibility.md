@@ -1,11 +1,13 @@
 # Duris petition feed and MUD compatibility implementation plan
 
-Status: implementation complete; bridge integration is tracked in PRs #30-#36.
-Phases 0-6 implementation
-checks pass, including full game/save/copyover acceptance, local Docker execution,
-and the actual Compose health probe. Live Discord delivery and audience checks
-remain a separate, later requested deployment gate.
-Date: 2026-10-14.
+Status: implementation corrected and locally verified; review and live rollout
+remain open. Updated: 2026-10-15.
+
+The staff-only feed always identifies petitioners and both reply participants
+by their actual character names. In-game invisibility, hiding, other concealment
+states, and mortal fog never anonymize this staff audit feed. Native recipient
+visibility remains unchanged. See the
+[name-redaction investigation and correction](duris-petition-name-redaction-investigation.md).
 
 ## Mission and agreed scope
 
@@ -30,7 +32,69 @@ This document is the implementation handoff. Checked items are completed and
 verified as recorded below; unchecked rollout items require a later deployment
 request and do not block implementation review.
 
-## Current handoff (2026-10-14)
+## Current handoff (2026-10-15)
+
+- Native fix: commit `e3c72ff54e6bd8412b4af2c77b999ef3125167fd`,
+  [Duris PR #102](https://github.com/LuminariMUD/Duris/pull/102), on
+  `codex/duris-staff-petition-names` in `/home/staging/duris`. The exporter uses
+  actual sender/target names through the existing bounded text conversion.
+  Accepted-command checks and native output/GMCP remain unchanged.
+- Native regressions now cover all five concealment affects for ordinary and
+  staff petitioners and reply sender/target/both combinations, wizard
+  invisibility, and mortal fog. The Node driver verifies named hidden-player
+  petitions and replies with both participants concealed. The full-game journey
+  expects named staff Discord posts while still asserting the in-game player's
+  anonymous hidden-staff reply.
+- The bridge sample matches the native fix revision. Refreshing it also brought
+  in the native endpoint's existing 32-record-per-pulse flood limit, which the
+  earlier sample lacked. The manifest separates the original integration-hook
+  revision from the current tested-module revision; source hooks, current help
+  paragraphs, resulting patch hashes, native drift and executable copies are
+  all checked. The sample README explains how to fetch the historical revision
+  absent from squash-merged `master` history.
+- Original bridge PRs #30-#36 and native PRs #83-#87 are integrated; native
+  `master` history contains all five squash merges, and GitHub confirms #87 is
+  merged. The old open-stack instructions below are historical, not remaining
+  work. The current fix is ready for review; leave merging to review as required
+  by this project's publication policy.
+- Local verification passes: native development build and formatting; native
+  command/Node integration normally and under ASan/UBSan; copied-sample checks
+  normally and under ASan/UBSan; isolated full-game save/reload, failed and
+  successful copyover, and disconnect/disable rollback; native endpoint,
+  privacy, game-loop, WebSocket, word-rendering/profile/output integration and
+  flat-file help tests. Bridge lint passes, and all 112 coverage tests pass on Node
+  24.18.0, 26.8.1 and 26.11.1, using npm 12.0.1. The two CI Node versions also
+  pass native/Node integration. Coverage remains 98.77% lines, 94.80% branches,
+  94.31% functions; the dependency audit reports zero vulnerabilities.
+- Generic C89 sample ASan/UBSan, generic/Duris application smoke tests, isolated
+  PM2 startup/restart/graceful stop, and a fresh production Docker image with
+  host-loopback relay and health checks pass. Existing generic bidirectional
+  and TLS behavior remains covered. The prior Compose-specific probe result
+  below remains historical; the fresh container check uses the real image and
+  application health endpoint.
+- Read-only rollout inspection: `#petition` denies `@everyone`; the bridge bot
+  can view/send. Morfos has an explicit member grant, confirmed by the owner as
+  intended staff on 2026-10-15. Administrator roles Staff, Forger, Zapier, MEE6,
+  Tempo and Jockie Music retain Discord's administrator access. No permissions
+  were changed. Exactly one configured `petition` mapping is `mud_to_discord`;
+  listener `127.0.0.1:8183` belongs to native PID 3429849, with one established
+  bridge client PID 3417011, also serving health on `127.0.0.1:3002`.
+  Health reports both connections up, three successful posts, no drops, and
+  zero Discord-to-MUD messages. These observations describe the existing
+  deployment and do not prove that the corrected binary is running.
+- Remaining live acceptance: deploy the reviewed native change using the
+  production build profile and normal lifecycle, then verify a concealed
+  petition and concealed staff reply in Discord and a Discord post producing
+  no game chat. The running MUD is `ENVIRONMENT=production`; the native
+  `AGENTS.md` requires owner permission for production operational actions.
+  This session has not restarted it or sent live test messages. Preparing code,
+  builds, PRs and read-only checks does not close that live gate.
+
+## Historical implementation handoff (2026-10-14)
+
+The following records describe the earlier implementation and merge sequence.
+The current handoff above supersedes their old pending-merge/deployment status
+and their concealed-name policy.
 
 ### Merge preparation and next-session handoff
 
@@ -387,7 +451,7 @@ request and do not block implementation review.
   supersedes this earlier PR-state snapshot.
 
 
-## Evidence from the current repositories
+## Evidence at original planning revisions
 
 Inspected bridge revision: `57a8c5838df0f9200df16084fceb71df18790a3f`.
 Inspected Duris revision: `7156b32431394a12a5a726d1158e1968dd89b3c7`.
@@ -403,7 +467,7 @@ Duris paths in this document are relative to `/home/staging/duris`.
 | Duris chat JSON | `src/core/json_utils.c` builds GMCP chat with `channel`, `sender`, `text`, and sometimes `alignment`; `src/net/gmcp.c` delivers it per recipient. | This is not the bridge wire format. Hook accepted commands once, rather than relaying every recipient's GMCP output. |
 | Petitions | `src/cmd/actcomm.c::do_petition()` checks NPC, silence, petition-block, petition-toggle, and empty-input conditions before delivery. It sends the petitioner and eligible staff their native output and GMCP. | Export only accepted messages, once per command, even when no staff are online. Keep all native checks and delivery unchanged. |
 | Staff replies | `src/cmd/actwiz.c::do_ptell()` validates its target, sends a private reply, and copies it to staff monitoring petitions. Its GMCP records also use `petition`; staff copies include a `sender -> target` label. | Include accepted replies in the same feed, identifying the target. Do not accidentally export all private tells. |
-| Visibility and privacy | `docs/adr/0003-player-privacy-chat-snoop-addresses.md` permits petition/staff audit logging and protects other conversation. Native `ptell` output can conceal the staff sender as `Someone`. | Use the staff-only destination selected by the user, preserve concealed identities in the feed, and avoid a global chat/log interception hook. |
+| Visibility and privacy | `docs/adr/0003-player-privacy-chat-snoop-addresses.md` permits petition/staff audit logging and protects other conversation. Native `ptell` output can conceal the staff sender as `Someone`. | Use the staff-only destination selected by the user and retain actual character names in its audit feed; avoid a global chat/log interception hook. (Corrected 2026-10-15.) |
 | Duris implementation language | `src/Makefile` compiles `.c` files as C++20 and already links cJSON, SSL, and crypto libraries. `src/net/ansi.h` understands Duris color markup. | Reuse native facilities. The Circle/Luminari C89 sample is not a drop-in Duris module. |
 | Existing examples | [docs/mud_example/discord_bridge.c](../mud_example/discord_bridge.c) has hand-written JSON parsing, a 4096-byte I/O buffer, and an 8192-byte serialization buffer, despite a larger advertised record limit. Companion `.c` files contain incomplete integration fragments. | Repair and test generic examples as well as adding a Duris example. Do not present these fragments as complete compilable source files. |
 | Existing tests | [test/bridge.test.js](../../test/bridge.test.js), [test/mud-client.test.js](../../test/mud-client.test.js), and the remaining suite cover generic relay, framing, Unicode, TLS, retries, health, and shutdown. | Extend these tests; retain their assertions for existing behavior. Add executable native integration tests for Duris. |
@@ -478,11 +542,10 @@ Use the existing schema for both event types:
 
 Each object above is a separate wire record followed by an actual LF byte.
 The reply label is presentation text, not a command or authenticated identity.
-Keep staff invisibility/concealment conservative: a hidden staff sender is
-`Someone -> Player` in the external feed. Do not assume that every member of a
-Discord staff role has the highest in-game visibility privilege. Define and test
-the native visibility predicates used by this redaction without inventing a
-logged-in bot character.
+Always include actual character names for petitioners, staff reply senders and
+reply targets in this staff-only feed. Use bounded, sanitized `GET_NAME()` values
+regardless of concealment or mortal fog. Preserve native per-recipient visibility
+separately; no logged-in bot character or visibility privilege is needed.
 
 Strip Duris color markup and terminal controls at the Duris export boundary,
 using its existing ANSI/Unicode facilities with bounded output. Preserve valid
@@ -584,9 +647,9 @@ Forged incoming chat cannot affect any player or execute any command.
 - [x] Add the two accepted-command hooks in `src/cmd/actcomm.c::do_petition()`
       and `src/cmd/actwiz.c::do_ptell()`. Keep rejection branches and native
       output behavior unchanged.
-- [x] Implement plain text conversion, reply target labels, concealed-sender
-      redaction, and full-record serialization with bounds derived from actual
-      Duris name/text buffers. Do not confuse `MAX_INPUT_LENGTH` with wire-record
+- [x] Implement plain text conversion, reply target labels with actual
+      character names regardless of concealment, and full-record serialization with
+      bounds derived from actual Duris name/text buffers. Do not confuse `MAX_INPUT_LENGTH` with wire-record
       size or silently truncate a JSON record to fit a small fixed buffer.
 - [x] Test real command paths with NPC/blocked/silenced/disabled/empty petitions,
       and missing, self, NPC, invisible/ineligible, or disconnected reply targets.
@@ -665,17 +728,18 @@ fixture peer. No sample or documentation change silently enables game ingress.
       for a small real-service smoke test of both event types. Confirm an
       ordinary Discord post never reaches Duris. The planning task itself does
       not send messages or change a running service.
-- [ ] During that later deployment, start with one enabled endpoint and one Node
-      process. Verify the configured Discord audience and that no other channel
-      mapping is present.
+- [x] Inspect the current deployment: one enabled endpoint and one connected
+      Node bridge process; exactly one one-way petition mapping. Verify the
+      configured audience (including the owner-confirmed Morfos grant). See
+      the 2026-10-15 read-only evidence above; recheck connections after rollout.
 - [x] Exercise rollback: stop the Node bridge or disable the Duris endpoint and
       restart using the normal local procedure. Native petition/ptell behavior
       must continue. Keep generic deployment defaults unchanged.
 
 ## Proposed Duris bridge configuration
 
-The Phase 1 bridge enforces `direction`; the Duris endpoint and command hooks
-exist on the Phase 3 branch. The endpoint must also be enabled in Duris.
+The bridge enforces `direction`; the native endpoint and command hooks are
+merged into Duris `master`. The staff-name correction is in PR #102. The endpoint must also be enabled in Duris.
 Node/native command-boundary integration, local/PM2 sample deployment and full
 isolated-game acceptance are verified. Container execution passes both locally
 and on an isolated CI Linux runner; the actual Compose health probe also passes
@@ -719,7 +783,7 @@ document the TLS terminator's trust boundary and optional shared token.
 | One-way mode is effective | Captured real/fake socket writes contain permitted controls only after a Discord post; `discordToMud` stays zero; a forged chat record at the Duris endpoint causes no game output or command dispatch. |
 | Both requested event types work | Executable `do_petition` and `do_ptell` cases produce the correct `petition` record and author/target label exactly once with zero, one, and multiple staff online. |
 | Rejected commands stay rejected | Negative command cases produce no exported record and retain their existing in-game feedback. |
-| Scope and staff visibility are preserved | No other channel exports; hidden staff labels are redacted; native output/GMCP and privacy regressions pass; Discord's destination permissions are checked at rollout. |
+| Scope and staff visibility are preserved | No other channel exports; concealed petitioners and reply participants retain actual names in the staff feed; native output/GMCP and privacy regressions pass; Discord's destination permissions are checked at rollout. |
 | Framing and text are correct | Real sockets with split/coalesced UTF-8, escaped newlines, CRLF/blank lines, malformed objects, exact byte limits, oversized recovery, color markup, dollars, mentions, and Unicode-safe Discord chunk boundaries. |
 | Network handling cannot stall gameplay | Native short-write/backpressure and per-pulse budget tests; bounded-memory overflow; one-client policy; EOF/error recovery; disabled listener; ordinary shutdown and successful/failed copyover. |
 | Existing transport protection remains | Generic loopback TCP, validated TLS, bad-certificate rejection, server-name handling, optional auth before chat, no plaintext tokens, heartbeat, retries, stale-socket isolation, and shutdown tests. |
@@ -753,8 +817,8 @@ python3 tests/async/test_word_output_style.py
 python3 tests/async/test_output_profiles.py
 ```
 
-Add focused `tests/async/test_discord_bridge_runtime.py` and
-`tests/async/test_discord_petition_export.py` runners (proposed names), following
+Maintain the focused `tests/async/test_discord_bridge_runtime.py` and
+`tests/async/test_discord_petition_export.py` runners, following
 the existing executable-harness conventions. Place compiled artifacts under
 `bin/`, use synthetic players and temporary sockets, and exercise the actual
 native implementation. Add a cross-repository runner with a configurable Duris
@@ -764,8 +828,8 @@ rollout check, not a requirement for running the generic test suite.
 ## Completion criteria for implementation
 
 These implementation criteria are verified with synthetic Discord sinks and
-isolated game processes. The real destination's permissions and API delivery
-remain explicitly unchecked in the separate rollout checklist above.
+isolated game processes. The real destination's permissions have been checked; corrected live API
+delivery remains open in the separate rollout checklist above.
 
 - [x] Duris exports accepted petitions and staff `ptell` replies to the single
       staff-only Discord destination, once per accepted command in normal
@@ -784,7 +848,6 @@ remain explicitly unchecked in the separate rollout checklist above.
       generic interoperability, and real Discord rollout checks. Any remaining
       unverified required behavior keeps implementation completion open.
 
-The implementation can proceed in small changes: generic direction support,
-Duris transport, petition/ptell hooks, then integration tests and documentation.
-The documentation and examples remain part of completion, not optional follow-up
-work. No pending channel-selection decision remains for this initial scope.
+Implementation and local acceptance are complete for the staff-name correction.
+Review and live rollout remain as recorded in the current handoff. No pending
+channel-selection or audience decision remains for this initial scope.

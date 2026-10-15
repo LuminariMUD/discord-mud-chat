@@ -34,7 +34,7 @@ for relative in manifest["sha256"]:
         source_paths.add(path)
         assert (SAMPLE / relative).read_bytes() == blob(manifest["tested_revision"], path), f"Tested revision drift: {path}"
 changed_source = subprocess.check_output([
-    "git", "diff", "--name-only", manifest["base_revision"], manifest["tested_revision"], "--", "src/"
+    "git", "diff", "--name-only", manifest["base_revision"], manifest["integration_revision"], "--", "src/"
 ], cwd=duris, text=True).splitlines()
 assert set(changed_source) == source_paths, "Sample does not cover every native production source change"
 
@@ -68,7 +68,19 @@ with tempfile.TemporaryDirectory(prefix="discord-sample-", dir=build) as directo
     subprocess.run(["git", "apply", "--check", str(SAMPLE / "integration.patch")], cwd=patched, check=True)
     subprocess.run(["git", "apply", str(SAMPLE / "integration.patch")], cwd=patched, check=True)
     for path in manifest["patch_files"]:
-        assert (patched / path).read_bytes() == blob(manifest["tested_revision"], path), f"Patch drift: {path}"
+        content = (patched / path).read_bytes()
+        assert hashlib.sha256(content).hexdigest() == manifest["patched_sha256"][path], f"Patch drift: {path}"
+        if path.startswith("src/"):
+            # Keep the original installation hooks free of unrelated later game changes.
+            assert content == blob(manifest["integration_revision"], path), f"Integration hook drift: {path}"
+        else:
+            # Updated help must also match the tested native revision, whose full
+            # help catalogs may contain unrelated topics added since integration.
+            native_help = blob(manifest["tested_revision"], path).decode()
+            paragraphs = [part for part in content.decode().split("\n\n") if "Discord petition feed" in part]
+            assert paragraphs, f"Missing Discord help: {path}"
+            for paragraph in paragraphs:
+                assert paragraph in native_help, f"Native Discord help drift: {path}"
     (temp / "petition_commands.inc").write_text("\n\n".join(functions))
     binary = temp / "harness"
     flags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"] if os.getenv("SANITIZE") == "1" else []

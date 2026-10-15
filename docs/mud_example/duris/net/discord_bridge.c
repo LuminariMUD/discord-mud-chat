@@ -22,6 +22,7 @@ constexpr std::size_t maximum_queue_bytes = 4 * (maximum_record_bytes + 1);
 constexpr std::size_t maximum_queue_events = 256;
 constexpr std::size_t pulse_bytes = 64 * 1024;
 constexpr unsigned pulse_calls = 32;
+constexpr unsigned pulse_records = 32;
 constexpr unsigned pulse_accepts = 4;
 constexpr time_t authentication_timeout = 10;
 constexpr time_t heartbeat_timeout = 300; // Node sends a ping every 240 seconds.
@@ -141,6 +142,7 @@ void read_client()
 {
 	char buffer[4096];
 	std::size_t remaining = pulse_bytes;
+	unsigned records = 0;
 	for (unsigned calls = 0; client >= 0 && remaining && calls < pulse_calls; ++calls)
 	{
 		const ssize_t bytes = recv(client, buffer, std::min(sizeof(buffer), remaining), 0);
@@ -162,6 +164,14 @@ void read_client()
 		{
 			if (buffer[i] == '\n')
 			{
+				// Only auth and occasional heartbeats are expected. Drop floods
+				// before parsing can monopolize the game thread.
+				if (records++ == pulse_records)
+				{
+					count(status.rejected_records);
+					disconnect_client();
+					return;
+				}
 				if (!discarding)
 					consume_record();
 				input.clear();

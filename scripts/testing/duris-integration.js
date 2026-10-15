@@ -131,7 +131,13 @@ async function main() {
         await rpc("hidden_reply", "Hidden staff reply");
         await until(() => posts.length === 3);
         assert.deepEqual(posts.map(p => p.content), ['Player: Help $n @everyone 你好 🔥 "quote" \\',
-            "Staff -> Player: Checking $1 🔥", "Someone -> Player: Hidden staff reply"]);
+            "Staff -> Player: Checking $1 🔥", "Staff -> Player: Hidden staff reply"]);
+
+        await rpc("hidden_petition", "Hidden player petition");
+        await rpc("hidden_target_reply", "Both participants hidden");
+        await until(() => posts.length === 5);
+        assert.deepEqual(posts.slice(3).map(p => p.content), ["Player: Hidden player petition",
+            "Staff -> Player: Both participants hidden"]);
 
         const rejected = await rpc("rejected_petition", "must not export");
         assert.equal(rejected.native_deliveries, 1);
@@ -140,15 +146,15 @@ async function main() {
         assert.equal(notice.sent, rejected.sent);
         await forwarding;
         await tick();
-        assert.equal(posts.length, 3);
+        assert.equal(posts.length, 5);
 
         // Inject malformed/oversized wire records through the real socket before
         // the next native event; the production native serializer never makes them.
         await forward(downstream, Buffer.from("null\ninvalid private-body\n" + "x".repeat(limit + 1) + "\n"), 16384);
         const long = "🔥".repeat(2100) + " @everyone";
         await rpc("petition", long);
-        await until(() => posts.length === 6);
-        assert.equal(posts.slice(3).map(p => p.content).join(""), "Player: " + long);
+        await until(() => posts.length === 8);
+        assert.equal(posts.slice(5).map(p => p.content).join(""), "Player: " + long);
         for (const post of posts) {
             assert.ok(post.content.length <= 2000 && post.content.isWellFormed());
             assert.deepEqual(post.allowedMentions, { parse: [] });
@@ -176,9 +182,9 @@ async function main() {
         await until(async () => connections >= 2 && (await rpc("status")).authenticated && health.stats.mudConnected);
         assert.equal(bridge.mudDataBuffer, "");
         await rpc("reply", "after reconnect");
-        await until(() => posts.length === 7);
-        assert.equal(posts[6].content, "Staff -> Player: after reconnect");
-        assert.equal(health.stats.messagesRelayed.mudToDiscord, 7);
+        await until(() => posts.length === 9);
+        assert.equal(posts[8].content, "Staff -> Player: after reconnect");
+        assert.equal(health.stats.messagesRelayed.mudToDiscord, 9);
         assert.equal(health.stats.messagesDropped.mudToDiscord, 0);
 
         await bridge.stop();
@@ -191,7 +197,7 @@ async function main() {
         assert.equal(disabled.native_deliveries, reply.native_deliveries);
         assert.equal(disabled.listening, false);
         assert.equal(disabled.dropped, 0);
-        assert.equal(posts.length, 7);
+        assert.equal(posts.length, 9);
         const finished = once(native, "exit");
         await rpc("quit");
         const [exitCode, signal] = await finished;

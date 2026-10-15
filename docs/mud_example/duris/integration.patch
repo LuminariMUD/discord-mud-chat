@@ -1,36 +1,39 @@
 diff --git a/help/duris_help_parsed.hlp b/help/duris_help_parsed.hlp
-index 24d9d01f8..f3d1fff5b 100644
+index 24d9d01..db7fddf 100644
 --- a/help/duris_help_parsed.hlp
 +++ b/help/duris_help_parsed.hlp
-@@ -16778,6 +16778,10 @@ currently on the MUD (if there are any).  Certain guidelines should be
+@@ -16778,6 +16778,12 @@ currently on the MUD (if there are any).  Certain guidelines should be
  followed when petitioning:
  * Do not inquire if gods are online. Describe your problem in details
  so they can come back to it later when they have time.
 +When the optional Discord petition feed is enabled, accepted petitions and
 +staff ptell replies may also appear in a staff-only Discord channel, even when
-+no gods are online. Discord posts cannot reply into the game. Native petition
-+recipients, toggles, and logs remain unchanged; the feed is best effort.
++no gods are online. The feed always identifies the petitioner and both reply
++participants by their character names, including when hidden or invisible.
++Discord posts cannot reply into the game. Native petition recipients, toggles,
++and logs remain unchanged; the feed is best effort.
  ==See also==
  gods, togglepetition, website, forums, bug, idea, typo, tell
  The following help topics also matched your search:
 diff --git a/lib/information/help_index b/lib/information/help_index
-index 7b013362c..901e7cbb2 100755
+index 7b01336..b1de7db 100755
 --- a/lib/information/help_index
 +++ b/lib/information/help_index
-@@ -6766,6 +6766,11 @@ This is exactly like tell, except that <text> is broadcast to all gods
+@@ -6766,6 +6766,12 @@ This is exactly like tell, except that <text> is broadcast to all gods
  with petition toggled on, to let them know that you responded to a
  particular petition.
  
 +When enabled, the optional staff-only Discord petition feed also receives one
-+copy of an accepted ptell, labeled with its sender and target. Concealed names
-+are shown as Someone. Discord posts cannot become game replies. The existing
-+native recipients, toggles, and logs are unchanged; delivery is best effort.
++copy of an accepted ptell, labeled with the actual sender and target character
++names, including when hidden, invisible, or using mortal fog. Discord posts
++cannot become game replies. Native recipients, visibility, toggles, and logs
++are unchanged; delivery is best effort.
 +
  Example:
          Oinkoink petitions 'Why is the sky blue?'
  
 diff --git a/src/Makefile b/src/Makefile
-index a0d5d2b28..adf68a12c 100644
+index a0d5d2b..adf68a1 100644
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -196,6 +196,8 @@ OBJS =  $(SHIP_OBJS) \
@@ -43,7 +46,7 @@ index a0d5d2b28..adf68a12c 100644
  				 core/common.o \
  				 world/condition.o \
 diff --git a/src/cmd/actcomm.c b/src/cmd/actcomm.c
-index 7eecccb52..ff8592c49 100644
+index 7eecccb..ff8592c 100644
 --- a/src/cmd/actcomm.c
 +++ b/src/cmd/actcomm.c
 @@ -10,6 +10,7 @@
@@ -63,7 +66,7 @@ index 7eecccb52..ff8592c49 100644
  		{
  			snprintf(
 diff --git a/src/cmd/actwiz.c b/src/cmd/actwiz.c
-index 09cf00503..be7f937ec 100644
+index 09cf005..be7f937 100644
 --- a/src/cmd/actwiz.c
 +++ b/src/cmd/actwiz.c
 @@ -9,6 +9,7 @@
@@ -160,7 +163,7 @@ index 09cf00503..be7f937ec 100644
  	{
  		if (IS_SET(ch->specials.act, PLR_ECHO))
 diff --git a/src/net/comm.c b/src/net/comm.c
-index c55c6a0d9..0249e3247 100644
+index c55c6a0..0249e32 100644
 --- a/src/net/comm.c
 +++ b/src/net/comm.c
 @@ -30,6 +30,7 @@
