@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Pinned Node.js and Alpine versions for reproducible production builds
-FROM node:26.11.1-alpine3.24@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a
+FROM node:26.12.1-alpine3.24@sha256:40cd011b55415bc894e45b02fdd5a5dfde056921b7d23a64c74f80497af48797
 
 # Set working directory
 WORKDIR /app
