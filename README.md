@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml/badge.svg?branch=main"></a>
-  <a href="package.json"><img alt="Node.js >=24.22.3" src="https://img.shields.io/badge/Node.js-%3E%3D24.22.3-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
+  <a href="package.json"><img alt="Node.js 24 or 26 LTS" src="https://img.shields.io/badge/Node.js-24%20%7C%2026%20LTS-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
   <a href="package.json"><img alt="npm >=12.2.3" src="https://img.shields.io/badge/npm-%3E%3D12.2.3-CB3837?style=flat-square&amp;logo=npm&amp;logoColor=white"></a>
   <a href="src/index.js"><img alt="discord.js 14" src="https://img.shields.io/badge/discord.js-14-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white"></a>
   <br>
@@ -102,8 +102,9 @@ discards incoming chat.
 
 ## Quick start
 
-You need **Node.js >=24.22.3**, **npm >=12.2.3**, a Discord bot, and a MUD JSON
-listener. `.nvmrc` selects Node 26.13.1 LTS by default. `packageManager` pins npm 12.2.3.
+You need **Node.js 24.22.3+ (24.x)** or **26.13.1+ (26.x)**, **npm >=12.2.3**,
+a Discord bot, and a MUD JSON listener. `.nvmrc` selects Node 26.13.1 LTS by
+default. `packageManager` pins npm 12.2.3.
 
 ### 1. Install
 
@@ -276,7 +277,7 @@ HEALTH_PORT=0 SMOKE_GENERIC=1 node scripts/testing/deployment-smoke.js
 
 # Opt-in Duris checks; supply a compatible local checkout:
 python3 scripts/test-duris.py --duris /path/to/duris
-python3 scripts/test-duris.py --duris /path/to/duris --full-game
+python3 scripts/test-duris.py --duris /path/to/duris --full-game --disposable-db
 python3 scripts/check-duris-sample.py --duris /path/to/duris
 ```
 

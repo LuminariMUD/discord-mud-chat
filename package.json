@@ -13,7 +13,7 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='config/**/*.js' --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=85"
   },
   "engines": {
-    "node": ">=24.22.3",
+    "node": "^24.22.3 || ^26.13.1",
     "npm": ">=12.2.3"
   },
   "packageManager": "npm@12.2.3",

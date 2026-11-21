@@ -84,14 +84,14 @@ Full isolated game boot/save/copyover journeys are separate acceptance checks.
 Run the full-game acceptance journey with:
 
 ```sh
-python3 scripts/test-duris.py --duris /path/to/duris --full-game
+python3 scripts/test-duris.py --duris /path/to/duris --full-game --disposable-db
 ```
 
-The native `test_discord_game_journey.py` runner builds the server. Current Duris
-checkouts also use `with_disposable_mariadb.sh`, which needs local Docker and a
-`mysql` client on PATH. The bridge runner starts that fixture automatically
-unless you supply `TEST_DB_HOST` and credentials for your own disposable
-loopback database. Older flat-file checkouts can run without the SQL fixture.
+The native `test_discord_game_journey.py` runner builds the server. On current
+Duris checkouts, `--disposable-db` invokes Duris's `with_disposable_mariadb.sh`
+and needs local Docker and a `mysql` client on PATH. Omit `--disposable-db`
+for a historical flat-file checkout or if you are supplying `TEST_DB_HOST`
+and credentials for an existing disposable loopback database.
 Temporary runtime data and binaries stay under Duris's `bin/tests/`. Two
 synthetic accounts log in through real gameplay sockets and the actual Node
 transport and relay send to an in-memory Discord sink.

@@ -35,8 +35,9 @@ The application exchanges JSON messages with the MUD in this format:
 
 ## Development Commands
 
-Use Node.js 24.22.3 or newer and npm 12.2.3 or newer. The default toolchain is
-Node 26.13.1 LTS in `.nvmrc` and npm 12.2.3 in `package.json` (`packageManager`).
+Use Node.js 24.22.3+ on Node 24 or 26.13.1+ on Node 26, and npm 12.2.3 or
+newer. The default toolchain is Node 26.13.1 LTS in `.nvmrc` and npm 12.2.3
+in `package.json` (`packageManager`).
 
 ### Running the Application
 ```bash

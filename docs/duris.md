@@ -28,14 +28,15 @@ python3 tests/async/test_discord_bridge_runtime.py
 python3 tests/async/test_discord_petition_export.py
 ```
 
-From the bridge checkout, with Node >=24.22.3, npm >=12.2.3, and OpenSSL installed:
+From the bridge checkout, with the [supported Node and npm versions](../README.md#quick-start)
+and OpenSSL installed:
 
 ```sh
 npm ci
 npm run lint
 npm run test:coverage
 python3 scripts/test-duris.py --duris /path/to/duris
-python3 scripts/test-duris.py --duris /path/to/duris --full-game
+python3 scripts/test-duris.py --duris /path/to/duris --full-game --disposable-db
 python3 scripts/check-duris-sample.py --duris /path/to/duris
 ```
 

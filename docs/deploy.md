@@ -7,9 +7,9 @@ HTTPS/WebSocket access and a dedicated JSON connection to the MUD.
 
 ## Local Node
 
-Use the Node LTS version in `.nvmrc` (26.13.1). Node 24.22.3 or newer is
-also supported. From this repository, install the declared npm version and the
-locked dependencies:
+Use the Node LTS version in `.nvmrc` (26.13.1). The Node 24 LTS line is
+also supported from 24.22.3. From this repository, install the declared npm
+version and the locked dependencies:
 
 ```sh
 npm install --global "$(node -p 'require("./package.json").packageManager')"

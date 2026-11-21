@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import tempfile
 import threading
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -14,6 +15,25 @@ env = dict(os.environ)
 for key in ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_TLS", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"):
     env.pop(key, None)
 subprocess.run([*DOCKER, "info", "--format", "{{.ServerVersion}}"], env=env, check=True)
+# Export an inert context to check that local files stay out of the build.
+with tempfile.TemporaryDirectory(prefix="mud-container-context-") as directory:
+    context = Path(directory) / "context"
+    context.mkdir()
+    (context / "Dockerfile").write_text("FROM scratch\nCOPY . /\n", encoding="ascii")
+    (context / ".dockerignore").write_bytes((ROOT / ".dockerignore").read_bytes())
+    included = {"package.json", "src/index.js", "config/config.example.json"}
+    excluded = {".env", "config/config.json", "config/local.js", "src/.env", "src/local.js",
+                "src/node_modules/local.js"}
+    for path in included | excluded:
+        file = context / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.touch()
+    result = Path(directory) / "result"
+    subprocess.run([*DOCKER, "build", "--output", f"type=local,dest={result}", str(context)],
+                   env=env, check=True)
+    exported = {file.relative_to(result).as_posix() for file in result.rglob("*") if file.is_file()}
+    assert exported == included, f"Unexpected contents in Docker context: {exported ^ included}"
+
 image = f"mud-discord-chat:integration-{os.getpid()}"
 build = [*DOCKER, "build", "-t", image]
 if os.environ.get("CODEX_PROXY_CERT"):

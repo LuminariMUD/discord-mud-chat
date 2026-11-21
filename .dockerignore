@@ -2,9 +2,12 @@
 **
 !package.json
 !package-lock.json
-!src/
-!src/**/*.js
-!config/
+!src/bridge.js
+!src/discord-delivery.js
+!src/health.js
+!src/index.js
+!src/logger.js
+!src/mud-client.js
 !config/config.js
 !config/load-config.js
 !config/config.example.json
