@@ -35,8 +35,8 @@ The application exchanges JSON messages with the MUD in this format:
 
 ## Development Commands
 
-Use Node.js 24.18.0 or newer and npm 12.0.1 or newer. The repository's
-`.nvmrc` and `packageManager` fields declare the canonical tool versions.
+Use Node.js 24.22.3 or newer and npm 12.2.3 or newer. The default toolchain is
+Node 26.13.1 LTS in `.nvmrc` and npm 12.2.3 in `package.json` (`packageManager`).
 
 ### Running the Application
 ```bash
@@ -57,7 +57,7 @@ pm2 start ecosystem.config.js --env development  # Start in development mode
 1. Copy `config/config.example.json` to `config/config.json`
 2. Copy `.env.example` to `.env` and set:
    - `DISCORD_TOKEN` (required)
-   - `BITLY_TOKEN` (optional, reserved for future use)
+   - `MUD_AUTH_TOKEN` (optional, requires TLS for the MUD connection)
 3. Configure channel mappings in config/config.json
 
 ## Key Dependencies

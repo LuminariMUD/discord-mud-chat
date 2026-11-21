@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Opt-in cross-repository check; generic npm tests never need a Duris checkout."""
 import argparse
+import os
 from pathlib import Path
 import subprocess
 
@@ -13,5 +14,8 @@ runner = args.duris.resolve() / "tests/async" / ("test_discord_game_journey.py" 
 if not runner.is_file():
     parser.error(f"Native runner not found: {runner}")
 driver = "duris-game-sink.js" if args.full_game else "duris-integration.js"
-subprocess.run(["python3", str(runner), "--node-driver", str(root / "scripts/testing" / driver)],
-               check=True, cwd=root)
+command = ["python3", str(runner), "--node-driver", str(root / "scripts/testing" / driver)]
+database_fixture = runner.with_name("with_disposable_mariadb.sh")
+if args.full_game and database_fixture.is_file() and not os.environ.get("TEST_DB_HOST"):
+    command = ["bash", str(database_fixture), *command]
+subprocess.run(command, check=True, cwd=root)
