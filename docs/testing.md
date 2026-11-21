@@ -14,9 +14,12 @@ after the tests; no repository or system trust-store changes are needed.
 
 ## Continuous integration
 
-The GitHub Actions workflow in `.github/workflows/test.yml` runs for pull requests, pushes to `main`, and manual dispatches. It validates Node.js 24.18.0 and 26.8.1, then builds the production Docker image and exercises its host-loopback deployment after both test jobs pass.
-An independent job compiles the generic C89 sample and runs its socket/fault
-tests with sanitizers; it installs cJSON development headers and needs no Duris.
+GitHub Actions runs on Ubuntu 26.04 for pull requests, pushes to `main`, and
+manual dispatches. It tests Node 24.22.3 and the Node 26 LTS version in `.nvmrc`.
+The Node 26 job also runs the deployment smoke test with PM2 7.1.2. After those
+jobs pass, CI builds the actual Docker image and exercises host-loopback relay.
+An independent job compiles the generic C89 sample with the distribution's cJSON
+development headers and runs its socket and fault tests with sanitizers.
 
 ## Coverage
 
@@ -81,19 +84,23 @@ Full isolated game boot/save/copyover journeys are separate acceptance checks.
 Run the full-game acceptance journey with:
 
 ```sh
-python3 scripts/test-duris.py --duris /path/to/duris --full-game
+python3 scripts/test-duris.py --duris /path/to/duris --full-game --disposable-db
 ```
 
-It requires the native `test_discord_game_journey.py` runner and builds the current
-flat-file server and fixture inspector. Temporary runtime data and binaries stay
-under Duris's `bin/tests/`. Two synthetic accounts log in through real gameplay
-sockets; the actual Node transport/relay sends to an in-memory Discord sink.
+The native `test_discord_game_journey.py` runner builds the server. On current
+Duris checkouts, `--disposable-db` invokes Duris's `with_disposable_mariadb.sh`
+and needs local Docker and a `mysql` client on PATH. Omit `--disposable-db`
+for a historical flat-file checkout or if you are supplying `TEST_DB_HOST`
+and credentials for an existing disposable loopback database.
+Temporary runtime data and binaries stay under Duris's `bin/tests/`. Two
+synthetic accounts log in through real gameplay sockets and the actual Node
+transport and relay send to an in-memory Discord sink.
 The journey checks native petition/reply feedback and audit, dollar escaping,
 concealment, excluded commands/channels, one-way ingress, saves and reload,
 failed exec, successful copyover on the original player sockets, and
-disconnect/disable rollback. It uses a minimal world and no operator `.env`,
-database, live service or Discord credential. This opt-in journey is outside
-the generic npm suite; command-harness sanitizers remain separate.
+disconnect/disable rollback. It uses a minimal world with synthetic accounts
+and a disposable schema on MariaDB-backed checkouts. This journey runs
+separately from the generic npm suite and the command-harness sanitizer run.
 
 ## Integration samples and deployment
 
@@ -104,7 +111,7 @@ python3 scripts/check-duris-sample.py --duris /path/to/duris
 SANITIZE=1 python3 scripts/check-duris-sample.py --duris /path/to/duris
 HEALTH_PORT=0 node scripts/testing/deployment-smoke.js
 HEALTH_PORT=0 SMOKE_GENERIC=1 node scripts/testing/deployment-smoke.js
-node scripts/check-pm2.js
+npm exec --yes --package=pm2@7.1.2 -- node scripts/check-pm2.js
 python3 scripts/test-container.py
 ```
 
@@ -116,9 +123,10 @@ applicability, then compiles and runs the copied modules. These tests are opt-in
 the generic npm suite does not require a C compiler or Duris checkout.
 
 Local deployment checks use the actual application composition, sample configs,
-real loopback sockets/HTTP health, and a fake Discord client. PM2 must be on PATH;
-its runner creates a temporary PM2 home, tests exactly one fork instance and
-signal shutdown, then removes that test daemon and files. It does not touch the
+real loopback sockets/HTTP health, and a fake Discord client. The PM2 command
+above supplies the version used in CI. The runner creates a temporary PM2 home,
+tests exactly one fork instance and signal shutdown, then removes its daemon
+and files. It does not touch the
 operator's PM2 state or startup service.
 
 The container runner requires access to local Linux Docker Engine. It builds the

@@ -2,6 +2,7 @@
   "name": "mud-discord-chat",
   "version": "1.0.2",
   "description": "Bridge between MUD and Discord for bidirectional chat relay",
+  "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -12,10 +13,10 @@
     "test:coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**/*.js' --test-coverage-include='config/**/*.js' --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=85"
   },
   "engines": {
-    "node": ">=24.18.0",
-    "npm": ">=12.0.1"
+    "node": "^24.22.3 || ^26.13.1",
+    "npm": ">=12.2.3"
   },
-  "packageManager": "npm@12.0.1",
+  "packageManager": "npm@12.2.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/LuminariMUD/discord-mud-chat.git"
@@ -28,14 +29,14 @@
   },
   "homepage": "https://github.com/LuminariMUD/discord-mud-chat#readme",
   "dependencies": {
-    "discord.js": "^14.27.0",
-    "dotenv": "^18.0.7",
+    "discord.js": "^14.28.1",
+    "dotenv": "^18.0.10",
     "emoji-regex": "^11.0.0",
     "winston": "^3.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.12.0",
-    "globals": "^17.13.0"
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0"
   }
 }

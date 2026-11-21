@@ -6,8 +6,9 @@ records Duris work and remaining acceptance gates.
 
 ## Runtime and configuration
 
-The project requires Node >=24.18.0 and npm >=12.0.1, installs from
-`package-lock.json`, and uses discord.js 14, Winston, dotenv and emoji-regex.
+The project supports Node 24 from 24.22.3 and Node 26 from 26.13.1 with
+npm >=12.2.3. It installs from `package-lock.json` and uses discord.js 14,
+Winston, dotenv and emoji-regex.
 `src/index.js` composes `ChatBridge`, `MudClient`, health and logging. Tests use
 the Node built-in runner, not Jest. Configuration is `config/config.json` plus
 the environment; see [README](../README.md) for fields.

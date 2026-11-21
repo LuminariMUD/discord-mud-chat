@@ -1,36 +1,22 @@
 # syntax=docker/dockerfile:1
-# Pinned Node.js and Alpine versions for reproducible production builds
-FROM node:26.11.1-alpine3.24@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a
+FROM node:26.13.1-alpine3.24@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
-# Use the package manager version declared by the project and install production dependencies
-RUN --mount=type=secret,id=proxy_ca \
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi && \
     npm install --global "$(node -p 'require("./package.json").packageManager')" && \
-    npm ci --omit=dev && \
-    npm cache clean --force
+    npm ci --omit=dev
 
-# Copy application files
 COPY src ./src
 COPY config ./config
 
-# Create logs directory
-RUN mkdir -p logs
-
-# Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+    adduser -S -G nodejs -u 1001 nodejs && \
+    mkdir logs && chown nodejs:nodejs logs
 
-# Change ownership of app directory
-RUN chown -R nodejs:nodejs /app
-
-# Switch to non-root user
 USER nodejs
-
-# Start the application
 CMD ["node", "src/index.js"]

@@ -7,9 +7,12 @@ HTTPS/WebSocket access and a dedicated JSON connection to the MUD.
 
 ## Local Node
 
-Install Node >=24.18.0 and npm >=12.0.1, then from this repository:
+Use the Node LTS version in `.nvmrc` (26.13.1). The Node 24 LTS line is
+also supported from 24.22.3. From this repository, install the declared npm
+version and the locked dependencies:
 
 ```sh
+npm install --global "$(node -p 'require("./package.json").packageManager')"
 npm ci
 cp config/config.example.json config/config.json
 cp .env.example .env
@@ -40,9 +43,11 @@ are documented under [testing](testing.md). `npm run dev` uses Node watch mode.
 
 ## PM2: one fork instance
 
-With PM2 installed through your normal Node toolchain, run from the repository:
+The deployment smoke test uses PM2 7.1.2. Install it in your Node toolchain
+if needed and run from the repository:
 
 ```sh
+npm install --global pm2@7.1.2
 pm2 start ecosystem.config.js
 pm2 show mud-discord-chat
 pm2 logs mud-discord-chat --lines 50
@@ -79,11 +84,12 @@ It does not change the operator's PM2 process list or install a startup service.
 
 ## Docker: choose the namespace explicitly
 
-The image pins its Node/Alpine base, installs production dependencies from the
-lockfile, and runs as UID/GID 1001. Config is mounted read-only. Prepare the
-local files and a writable logs directory for that container user before
-starting Compose; do not make tokens world-readable to solve a mount problem.
-No health port is published.
+The image pins Node 26.13.1 on Alpine 3.24 by digest and installs production
+dependencies from the lockfile. Its build context includes only the manifests,
+runtime source, and checked-in configuration templates. It runs as UID/GID
+1001. Config is mounted read-only. Prepare the local files and a writable logs
+directory for that container user before starting Compose. No health port is
+published.
 
 ### Linux host MUD on loopback
 

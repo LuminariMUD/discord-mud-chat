@@ -28,23 +28,25 @@ python3 tests/async/test_discord_bridge_runtime.py
 python3 tests/async/test_discord_petition_export.py
 ```
 
-From the bridge checkout, with Node >=24.18.0, npm >=12.0.1, and OpenSSL installed:
+From the bridge checkout, with the [supported Node and npm versions](../README.md#quick-start)
+and OpenSSL installed:
 
 ```sh
 npm ci
 npm run lint
 npm run test:coverage
 python3 scripts/test-duris.py --duris /path/to/duris
-python3 scripts/test-duris.py --duris /path/to/duris --full-game
+python3 scripts/test-duris.py --duris /path/to/duris --full-game --disposable-db
 python3 scripts/check-duris-sample.py --duris /path/to/duris
 ```
 
 The opt-in runners compile under Duris's `bin/tests/`, use synthetic players,
 and send to an in-memory Discord sink. They require no real account/token and
 change no running service. The default runner verifies the production command
-boundary. `--full-game` builds and boots a disposable minimal flat-file world,
-uses real player connections, and exercises saves/reload, failed exec, successful
-copyover and disconnect/disable rollback. Exact evidence is tracked in the
+boundary. `--full-game` builds and boots a disposable minimal world, uses real
+player connections, and exercises saves/reload, failed exec, successful copyover
+and disconnect/disable rollback. See the [test prerequisites](testing.md#duris-integration-opt-in)
+for the MariaDB fixture used by current Duris checkouts. Exact evidence is tracked in the
 [implementation handoff](ongoing-projects/duris-petition-compatibility.md).
 
 ## Staff channel and local configuration
@@ -146,7 +148,7 @@ replies continue through these failures.
 A successful game copyover closes the bridge sockets on exec, recreates the
 listener, and lets Node reconnect. A failed exec leaves the old listener usable.
 Ordinary shutdown closes it. The full-game journey verifies these paths with
-real player sockets and the Node relay in a disposable minimal flat-file world;
+real player sockets and the Node relay in a disposable minimal world;
 deployment configuration and the real Discord audience still need rollout checks.
 
 To roll back delivery, stop the single Node process. To disable the native
