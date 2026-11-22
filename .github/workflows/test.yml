@@ -45,8 +45,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Install MariaDB for isolated news delivery tests
+        run: sudo apt-get update && sudo apt-get install -y mariadb-server
+
       - name: Test with coverage thresholds
-        run: npm run test:coverage
+        run: bash scripts/test-news-mariadb.sh npm run test:coverage
 
       - name: Audit dependencies
         run: npm audit --audit-level=high

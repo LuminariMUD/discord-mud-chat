@@ -112,11 +112,13 @@ test("MariaDB stores one immutable admission across concurrency and a restart", 
 }, async t => {
     const database = { socketPath: process.env.TEST_NEWS_DB_SOCKET, user: "root", database: "discord_news_test" };
     const id = "1".repeat(64);
+    const destination = "423456789012345678";
+    const testConfig = { ...config, channelId: destination };
     const data = { ...announcement, id };
     const pool = createNewsPool(database);
     t.after(() => pool.end());
     await pool.query("DELETE FROM discord_news_delivery WHERE id = ?", [id]);
-    const intake = createNewsIntake({ config, pool, logger: silent });
+    const intake = createNewsIntake({ config: testConfig, pool, logger: silent });
     t.after(() => intake.stop());
     const { port } = await intake.start();
     const statuses = await Promise.all(Array.from({ length: 8 }, () => post(port, data)));
@@ -124,12 +126,12 @@ test("MariaDB stores one immutable admission across concurrency and a restart", 
     assert.equal(statuses.filter(item => item.status === 200).length, 7);
     const stored = await pool.query("SELECT * FROM discord_news_delivery WHERE id = ?", [id]);
     assert.equal(stored.length, 1);
-    assert.equal(stored[0].destination, channelId);
+    assert.equal(stored[0].destination, destination);
     assert.deepEqual(JSON.parse(stored[0].parts), renderNews(data));
 
     const restartedPool = createNewsPool(database);
     t.after(() => restartedPool.end());
-    const restarted = createNewsIntake({ config, pool: restartedPool, logger: silent });
+    const restarted = createNewsIntake({ config: testConfig, pool: restartedPool, logger: silent });
     t.after(() => restarted.stop());
     await intake.stop();
     const address = await restarted.start();

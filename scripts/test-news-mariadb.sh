@@ -29,4 +29,9 @@ done
     cat "$fixture/server.log" >&2
     exit 1
 }
-TEST_NEWS_DB_SOCKET="$fixture/db.sock" node --test test/news-*.test.js
+export TEST_NEWS_DB_SOCKET="$fixture/db.sock"
+if (( $# )); then
+    "$@"
+else
+    node --test test/news-*.test.js
+fi

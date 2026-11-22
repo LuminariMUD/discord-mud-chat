@@ -46,7 +46,7 @@ function createApplication(options = {}) {
         logger: console
     });
 
-    const news = options.news || (config.news && createNewsService(config.news));
+    const news = config.news && createNewsService(config.news, discordClient);
 
     let started = false;
     let closed = false;
