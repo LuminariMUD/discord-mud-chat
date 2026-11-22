@@ -127,3 +127,19 @@ submission off before closing bridge intake.
 Run `bash scripts/test-news-mariadb.sh npm run test:coverage` on a host with the
 MariaDB server tools to exercise the worker and intake against an isolated
 database. The tests also use an isolated HTTP sink for Discord.
+
+To run the full handoff journey, provide a Duris checkout with its verified
+news publisher and a compatible built server. The Duris fixture uses Docker
+for its separate disposable game database. The bridge fixture starts MariaDB
+over a private Unix socket.
+
+```sh
+TEST_DURIS_ROOT=/path/to/Duris TEST_DURIS_BINARY=/path/to/dms_new \
+    bash scripts/test-news-mariadb.sh node --test \
+    --test-name-pattern='Duris publishes' test/news-worker.test.js
+```
+
+The test runs the Duris import and real in-game news readback, checks the
+publisher's default-off path, drops the first successful acknowledgement, and
+retries the verified announcement. It checks one durable record and one
+message in an isolated Discord sink.

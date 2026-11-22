@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
+const { execFile } = require("node:child_process");
 const { createServer } = require("node:http");
+const { resolve } = require("node:path");
 const { test } = require("node:test");
 const { setTimeout: delay } = require("node:timers/promises");
+const { promisify } = require("node:util");
 const { ChannelType } = require("discord.js");
 const { createNewsService } = require("../src/news-service");
 const { createNewsPool, enqueueNews } = require("../src/news-store");
@@ -170,7 +173,7 @@ test("MariaDB surfaces an ambiguous POST or interrupted claim without replaying 
 test("the running news service delivers an accepted announcement to the configured route", fixtureOnly, async t => {
     const { client, received, replies } = await makeSink(t);
     const service = createNewsService({ database, channelId: destination, send: true }, client);
-    await service.start(); // Delivery-only operation, with admissions disabled.
+    assert.equal(await service.start(), undefined); // Delivery-only operation opens no intake listener.
     t.after(() => service.stop());
     const { row } = await fixture(t, "5");
     replies.push({ id: firstMessage }, { id: secondMessage });
@@ -179,4 +182,57 @@ test("the running news service delivers an accepted announcement to the configur
     assert.equal((await row()).state, "delivered");
     assert.equal(received.length, 2);
     assert.ok(received.every(message => message.path === "/v10/channels/" + destination + "/messages"));
+});
+
+test("Duris publishes verified in-game news once across a lost acknowledgement", {
+    skip: !database.socketPath || !process.env.TEST_DURIS_ROOT || !process.env.TEST_DURIS_BINARY,
+    timeout: 240000
+}, async t => {
+    const { client, received } = await makeSink(t);
+    const secret = "journey-secret-".repeat(4);
+    const service = createNewsService({ database, channelId: destination, host: "127.0.0.1",
+        port: 0, enabled: true, send: true, secret }, client);
+    const url = "http://127.0.0.1:" + (await service.start()).port;
+    t.after(() => service.stop());
+
+    const posted = [];
+    const proxy = createServer(async (request, response) => {
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        const ack = await fetch(url + request.url, {
+            method: request.method,
+            headers: { authorization: request.headers.authorization, "content-type": "application/json" },
+            body: Buffer.concat(chunks)
+        });
+        posted.push({ status: ack.status, ...await ack.json() });
+        response.destroy(); // MariaDB committed, but the publisher sees a lost connection.
+    });
+    await new Promise(resolveListen => proxy.listen(0, "127.0.0.1", resolveListen));
+    t.after(() => new Promise(resolveClose => proxy.close(resolveClose)));
+    const { stdout } = await promisify(execFile)("bash", [
+        "tests/async/with_disposable_mariadb.sh", "python3",
+        resolve(__dirname, "../scripts/testing/duris-news-journey.py"),
+        resolve(process.env.TEST_DURIS_BINARY)
+    ], {
+        cwd: process.env.TEST_DURIS_ROOT, timeout: 230000,
+        env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1", DURIS_DISCORD_NEWS_SECRET: secret, TEST_DURIS_NEWS_BRIDGE: url,
+            TEST_DURIS_NEWS_OUTAGE: "http://127.0.0.1:" + proxy.address().port }
+    });
+    const id = stdout.trim();
+    assert.match(id, /^[0-9a-f]{64}$/);
+    assert.deepEqual(posted.map(item => [item.status, item.id]), [[202, id]]);
+    const pool = createNewsPool(database);
+    t.after(() => pool.end());
+    const lookup = () => pool.query("SELECT * FROM discord_news_delivery WHERE id = ?", [id]);
+    const deadline = Date.now() + 5000;
+    while ((await lookup())[0]?.state !== "delivered" && Date.now() < deadline) await delay(50);
+    const rows = await lookup();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].state, "delivered");
+    assert.ok(rows[0].body.includes("The verified news command shows this new entry."));
+    assert.ok(!rows[0].body.includes("Yesterday"));
+    assert.equal(received.length, 1);
+    assert.equal(received[0].path, "/v10/channels/" + destination + "/messages");
+    assert.deepEqual(received[0].allowed_mentions, { parse: [] });
+    assert.deepEqual(JSON.parse(rows[0].message_ids), [firstMessage]);
 });
