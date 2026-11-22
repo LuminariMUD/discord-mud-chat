@@ -1,7 +1,7 @@
 ![MUD / Discord Chat Bridge - a luminous stone bridge connecting a fantasy dungeon to Discord chat](docs/assets/readme-header.png)
 
 <p align="center">
-  <a href="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/LuminariMUD/discord-mud-chat/actions/workflows/test.yml/badge.svg?branch=master"></a>
   <a href="package.json"><img alt="Node.js 24 or 26 LTS" src="https://img.shields.io/badge/Node.js-24%20%7C%2026%20LTS-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=white"></a>
   <a href="package.json"><img alt="npm >=12.2.3" src="https://img.shields.io/badge/npm-%3E%3D12.2.3-CB3837?style=flat-square&amp;logo=npm&amp;logoColor=white"></a>
   <a href="src/index.js"><img alt="discord.js 14" src="https://img.shields.io/badge/discord.js-14-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white"></a>
