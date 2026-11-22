@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { loadNewsConfig } = require("./news-config");
 
 /** Rejects unknown mapping directions while preserving the legacy default. */
 function validateChannelDirections(config) {
@@ -23,6 +24,9 @@ function loadConfig({ configPath, env = process.env, fsModule = fs }) {
     config.mud_auth_token = env.MUD_AUTH_TOKEN || "";
 
     validateChannelDirections(config);
+    const news = loadNewsConfig(config, env);
+    if (news) config.news = news;
+    else delete config.news;
     return config;
 }
 

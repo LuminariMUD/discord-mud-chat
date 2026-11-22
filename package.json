@@ -32,6 +32,7 @@
     "discord.js": "^14.28.1",
     "dotenv": "^18.0.10",
     "emoji-regex": "^11.0.0",
+    "mariadb": "^3.5.5",
     "winston": "^3.19.0"
   },
   "devDependencies": {
