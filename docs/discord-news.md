@@ -57,3 +57,93 @@ Acceptance and Discord delivery are reported separately.
 
 Set `news.enabled` to `false` and restart to disable the intake. Keep the database
 so a restarted bridge can still recognize previously accepted IDs.
+
+## Delivery, retry and reconciliation
+
+The sender uses the existing bot and sends parts in stored order. The database
+records each confirmed Discord message ID. A rate limit uses Discord's retry
+delay and increasing backoff for up to five attempts per part. Other explicit
+rejections pause the row for an operator. An unresolved row holds later
+announcements for its destination.
+
+Look up state without displaying announcement text or credentials.
+
+```sql
+SET @id = '<announcement SHA-256>';
+SELECT id, destination, state, JSON_LENGTH(parts) AS parts,
+       message_ids, attempts, retry_at, failure
+FROM discord_news_delivery WHERE id = @id;
+```
+
+- `queued` means waiting or partly delivered. `sending` means a worker claimed a part.
+- `delivered` means all parts have confirmed Discord message IDs.
+- `retryable` with a scheduled `retry_at` means an automatic retry is pending.
+  With no `retry_at`, correct the logged failure before resuming.
+- `needs_review` means the last request may have reached Discord. The worker
+  waits for reconciliation.
+
+To resume a definite failure, correct its cause and run the following update.
+It preserves all confirmed message IDs.
+
+```sql
+UPDATE discord_news_delivery
+SET state = 'queued', attempts = 0, retry_at = NULL, failure = NULL
+WHERE id = @id AND state = 'retryable' AND retry_at IS NULL;
+```
+
+For `needs_review`, pause every sender for this database and destination. Find
+the first unconfirmed part at index `JSON_LENGTH(message_ids)` in `parts`. Check
+the Discord channel and bot author, using existing message IDs and the incident
+time as anchors. If you confirm it was posted, record its Discord message ID.
+
+```sql
+SET @discord_message_id = '<confirmed Discord message ID>';
+UPDATE discord_news_delivery
+SET state = IF(JSON_LENGTH(message_ids) + 1 = JSON_LENGTH(parts), 'delivered', 'queued'),
+    message_ids = JSON_ARRAY_APPEND(message_ids, '$', @discord_message_id),
+    attempts = 0, retry_at = NULL, failure = NULL
+WHERE id = @id AND state = 'needs_review';
+```
+
+If you confirm the message was never posted, reset the `needs_review` row to
+`queued` with `attempts = 0, retry_at = NULL, failure = NULL`, leaving
+`message_ids` intact. Leave it in `needs_review` if the result is still
+uncertain. Resume the senders after reconciliation.
+
+## Pause or roll back
+
+Set `news.send` to `false` and restart each bridge worker to pause delivery.
+The worker finishes its current part and records the outcome during graceful
+shutdown. Allow at least 25 seconds before force-stopping a worker, as in the
+included Compose and PM2 configurations.
+Set `news.enabled` to `false` to close intake. If you omit `news.send`, it
+follows `news.enabled`. Set `news.send` explicitly to `true` to drain existing
+records with intake disabled. For rollback, disable both settings and retain
+the database when reverting the bridge. Rows keep their original destination.
+Drain or reconcile that destination before changing the configured channel.
+
+Deploy the bridge with intake and delivery enabled in staging before opting
+Duris in. Confirm the bot can post to the intended channel and that a verified
+test update goes from accepted to delivered. During rollback, turn Duris
+submission off before closing bridge intake.
+
+Run `bash scripts/test-news-mariadb.sh npm run test:coverage` on a host with the
+MariaDB server tools to exercise the worker and intake against an isolated
+database. The tests also use an isolated HTTP sink for Discord.
+
+To run the full handoff journey, provide a Duris checkout with its verified
+news publisher. Run `make -C src` and `make world` in that checkout to build
+the server and generate the combined area files. The Duris fixture uses Docker
+for its separate disposable game database. The bridge fixture starts MariaDB
+over a private Unix socket.
+
+```sh
+TEST_DURIS_ROOT=/path/to/Duris TEST_DURIS_BINARY=/path/to/dms_new \
+    bash scripts/test-news-mariadb.sh node --test \
+    --test-name-pattern='Duris publishes' test/news-worker.test.js
+```
+
+The test runs the Duris import and real in-game news readback, checks the
+publisher's default-off path, drops the first successful acknowledgement, and
+retries the verified announcement. It checks one durable record and one
+message in an isolated Discord sink.

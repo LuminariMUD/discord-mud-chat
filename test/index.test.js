@@ -345,6 +345,39 @@ test("createApplication waits for shutdown, coalesces stops, and prevents restar
     assert.deepEqual(calls.slice(-1), ["logger:close"]);
 });
 
+test("createApplication drains the news worker before destroying its Discord client", { timeout: 2000 }, async () => {
+    let finishNews;
+    let enterNews;
+    const newsDraining = new Promise(resolve => { enterNews = resolve; });
+    const newsDrained = new Promise(resolve => { finishNews = resolve; });
+    let destroyed = false;
+    const application = createApplication({
+        config: {},
+        logger: {},
+        healthServer: { start() {}, stop() {} },
+        discordClient: {},
+        mudClient: {},
+        bridge: { start() {}, stop() { destroyed = true; } },
+        news: {
+            start() {},
+            stop() {
+                enterNews();
+                return newsDrained;
+            }
+        }
+    });
+
+    await application.start();
+    const shutdown = application.stop();
+    await newsDraining;
+    const destroyedWhileDraining = destroyed;
+    finishNews();
+    await shutdown;
+
+    assert.equal(destroyedWhileDraining, false);
+    assert.equal(destroyed, true);
+});
+
 test("createApplication completes every shutdown path after a partial failure", async () => {
     const calls = [];
     let bridgeStopAttempts = 0;

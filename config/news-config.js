@@ -1,10 +1,11 @@
 function loadNewsConfig(config, env) {
-    const { enabled = false, host = "127.0.0.1", port = 3181, channel_id: channelId, database } = config.news || {};
+    const { enabled = false, send = enabled, host = "127.0.0.1", port = 3181, channel_id: channelId, database } = config.news || {};
     if (typeof enabled !== "boolean") throw new Error("news.enabled must be a boolean");
-    if (!enabled) return undefined;
+    if (typeof send !== "boolean") throw new Error("news.send must be a boolean");
+    if (!enabled && !send) return undefined;
 
-    if (host !== "127.0.0.1" && host !== "::1") throw new Error("news.host must be 127.0.0.1 or ::1");
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("news.port must be a valid port");
+    if (enabled && host !== "127.0.0.1" && host !== "::1") throw new Error("news.host must be 127.0.0.1 or ::1");
+    if (enabled && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("news.port must be a valid port");
     if (typeof channelId !== "string" || !/^[1-9]\d{16,19}$/.test(channelId)) {
         throw new Error("news.channel_id must be a Discord channel ID string");
     }
@@ -12,7 +13,7 @@ function loadNewsConfig(config, env) {
         throw new Error("news.channel_id must be separate from chat and petition mappings");
     }
     const secret = env.DISCORD_NEWS_INGEST_SECRET;
-    if (typeof secret !== "string" || !/^[A-Za-z0-9._~+/=-]{32,256}$/.test(secret)) {
+    if (enabled && (typeof secret !== "string" || !/^[A-Za-z0-9._~+/=-]{32,256}$/.test(secret))) {
         throw new Error("DISCORD_NEWS_INGEST_SECRET must contain 32 to 256 bearer-token characters");
     }
     const { host: dbHost = "127.0.0.1", port: dbPort = 3306, socket_path: socketPath, name, user } =
@@ -25,7 +26,7 @@ function loadNewsConfig(config, env) {
         throw new Error("Configure a valid news.database host and port or Unix socket_path");
     }
     return {
-        host, port, channelId, secret,
+        enabled, send, host, port, channelId, secret,
         database: { host: dbHost, port: dbPort, socketPath, database: name, user, password: env.DISCORD_NEWS_DB_PASSWORD }
     };
 }

@@ -7,7 +7,8 @@ function createNewsPool(database) {
         acquireTimeout: 2000,
         connectTimeout: 1500,
         queryTimeout: 2000,
-        socketTimeout: 3000,
+        // The worker holds this connection's lock through the eight-second Discord POST.
+        socketTimeout: 10000,
         // Parse JSON explicitly for consistent behavior across MariaDB versions.
         autoJsonMap: false
     });
