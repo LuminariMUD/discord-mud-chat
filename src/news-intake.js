@@ -19,8 +19,12 @@ function renderNews({ title, body }) {
         .map((part, index) => {
             if (index % 2 === 0) return escapeText(part);
             const url = part.replace(/[.,!?;:]+$/, "").replace(/\)+$/, (closing, offset, source) => {
-                const opens = (source.slice(0, offset).match(/\(/g) || []).length;
-                return closing.slice(0, opens);
+                let unmatched = 0;
+                for (const character of source.slice(0, offset)) {
+                    if (character === "(") unmatched++;
+                    else if (character === ")" && unmatched > 0) unmatched--;
+                }
+                return closing.slice(0, unmatched);
             });
             return "<" + url + ">" + escapeText(part.slice(url.length));
         }).join("");
