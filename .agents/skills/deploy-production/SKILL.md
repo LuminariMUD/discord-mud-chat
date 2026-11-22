@@ -10,6 +10,9 @@ bridge service owner on the intended host. Identify the deployment checkout,
 branch, and supervisor from the request and running service. On a first install,
 use the requested topology or the repository's single-fork PM2 configuration
 for a local Node host. Resolve an ambiguous production target before changing it.
+For Compose, take the project, working directory and ordered file list from
+the running container's Compose labels. Keep the site's overrides and determine
+the effective container user before checking mount permissions.
 
 ## Pull the release
 
@@ -39,8 +42,12 @@ catches that case. Preserve local changes if the checkout has diverged or
 tracked deployment files have local edits. Resolve the discrepancy before
 cutover. If the intended release is already running and healthy, check for
 pending configuration or migrations before deciding whether a restart is needed.
+An up-to-date checkout alone does not establish what is deployed. Check the
+running image's revision label or compare its packaged files to the release.
 
 ## Prepare and validate
+
+Record the running revision or image ID, service settings, and baseline health.
 
 - Read `docs/deploy.md`, `package.json`, and the changed files **in the pulled
   release**. Inspect release notes, config examples, scripts, and the Dockerfile
@@ -56,10 +63,9 @@ pending configuration or migrations before deciding whether a restart is needed.
   against `engines`. In the candidate,
   run `npm ci --include=dev`, any required build, `npm run lint`, and
   `npm run test:coverage`. The tests use OpenSSL. For PM2, exercise the isolated
-  supervisor fixture with `node scripts/check-pm2.js`. For Compose, verify
-  the production image with `python3 scripts/test-container.py` on a local
-  Linux Docker Engine. Matching CI results for the target SHA can supply
-  checks that require tooling outside the deployment host. See `docs/testing.md`.
+  supervisor fixture with `node scripts/check-pm2.js`. Matching CI results for
+  the target SHA can supply the lint and coverage checks when the deployment
+  host runs the bridge entirely in Docker. See `docs/testing.md`.
 - Preserve the operator's protected `.env`, `config/config.json`, channel
   mappings, and CA mounts. On first install, initialize missing files from
   `.env.example` and the generic or Duris config example. Provision the actual
@@ -70,20 +76,25 @@ pending configuration or migrations before deciding whether a restart is needed.
   A local `MUD_SERVER_PATH` can identify the peer for compatibility checks.
   Apply a native change only when the release requires it and the game rollout
   is in scope. Keep tokens and private message bodies out of output.
+- For Compose, build a separate candidate from the pulled worktree while the
+  running service stays up. Follow **Update an existing Compose deployment**
+  in `docs/deploy.md` for the candidate tag and revision label. Test that exact
+  image locally with `python3 scripts/test-container.py --image IMAGE_ID`.
+  If build steps cannot resolve the registry and the Linux host can, retry
+  with `docker-compose.build-host.yml` added only to the build command.
 
 ## Switch the single instance
 
-Record the running revision or image ID, service settings, and baseline health.
 Keep the previous release available and back up configuration or state that
 will change in a service-owner-only location outside the checkout. For Compose,
-retain a usable tag for the previous image before rebuilding. In the commands
-below, use the existing service name and Compose project/files for this endpoint.
-For Linux host loopback, include `-f docker-compose.yml -f docker-compose.host.yml`.
-The base file alone is for a reachable TLS endpoint.
+retain a tag for the running image ID before cutover. Use the existing service
+name and Compose project/files in the commands below. On a first install with a
+Linux host-loopback MUD, use `docker-compose.host.yml` with the base file.
 
 1. Serialize the cutover with other deploys. Verify the live checkout is still
    on `$branch` at `$previous` and check `git status --short` for changes that
-   would enter the release or be overwritten. For an update, stop the bridge
+   would enter the release or be overwritten. For an update, confirm the service
+   still runs the process or container recorded before staging. Stop the bridge
    with `pm2 stop mud-discord-chat`, `docker compose stop mud-discord-chat`, or
    its existing service manager. Wait for the old instance to exit. Queued
    events have no durable replay. On first install, confirm that no other
@@ -91,9 +102,9 @@ The base file alone is for a reachable TLS endpoint.
 2. In the deployment checkout run `git merge --ff-only --no-overwrite-ignore "$target"`.
    Verify `git rev-parse HEAD` equals the tested SHA. Apply required config
    changes while retaining site values.
-3. Install, build, migrate, and start using the active supervisor. Follow the
-   release's ordering for any migrations and verify each result. On a partial
-   failure, check which migrations committed before retrying.
+3. Follow the release's ordering for dependencies, builds, and migrations.
+   Verify each migration result. On a partial failure, check which migrations
+   committed before retrying.
    - **PM2 or supervised Node.** Run `npm ci` in the deployment checkout
      (include dev dependencies for any build that requires them) and build
      there if needed. Apply any pending migrations. For the supplied PM2
@@ -107,12 +118,12 @@ The base file alone is for a reachable TLS endpoint.
      Preserve site-specific supervisor settings and verify one fork.
      For another Node service, start its existing unit with
      the same working directory, environment, and `npm start` or Node entrypoint.
-   - **Compose.** Check the protected files and the logs mount permissions for
-     container UID/GID 1001. Run `docker compose config --quiet`, then
-     `docker compose build mud-discord-chat`. The Dockerfile installs locked
-     production dependencies. Run any image-based migration using its dedicated
-     command before `docker compose up -d --no-deps mud-discord-chat`.
-     Include the selected project and file options on every Compose command.
+   - **Compose.** Check the protected files and logs mount using the effective
+     UID/GID. Run `docker compose config --quiet` and tag the tested candidate ID
+     with the live service's resolved image name. Run any pending image-based
+     migration using that image and its dedicated command. Start the bridge with
+     `docker compose up -d --no-build --pull never --no-deps mud-discord-chat`.
+     Use the live project and files and verify the running image ID.
 
 ## Verify or recover
 
@@ -124,7 +135,7 @@ the service's effective `HEALTH_PORT` (default 3000). Under Compose, probe
 inside the container.
 
 ```sh
-docker compose exec -T mud-discord-chat sh -c 'wget -qO- "http://127.0.0.1:${HEALTH_PORT:-3000}/health"'
+docker compose exec -T mud-discord-chat sh -c 'wget -T 5 -qO- "http://127.0.0.1:${HEALTH_PORT:-3000}/health"'
 ```
 
 Require HTTP 200 with both `connections.mud` and `connections.discord` true.
@@ -145,11 +156,12 @@ intake, disable both `news.enabled` and `news.send`, and retain the database.
 If recovery requires a destructive restore without authorization, keep
 the writer stopped and report the recovery point. For Node, rerun the prior
 release's locked install and build as applicable and start it with the
-recorded supervisor settings. For Compose, select the retained image and run
-`docker compose up -d --no-build --no-deps mud-discord-chat`. Verify the recovered
-instance with the same health checks. For a failed first install, leave the
-service stopped and report the failing step.
+recorded supervisor settings. For Compose, retag the retained image under the
+restored service's image name and use the same `up` command as cutover. Verify
+the restored image ID and health. For a failed first install, leave the service
+stopped and report the failing step.
 
-Clean up with `git worktree remove "$release"` and `rmdir "$scratch"` after use.
-Report the previous and final revision, migrations applied, supervisor, health,
-and whether the rollout succeeded, rolled back, or still needs intervention.
+Remove the temporary worktree and build files after use. After a verified
+Compose cutover or recovery, remove the candidate tag and retain the rollback
+tag. Report the previous and final revision or image ID, migrations applied,
+health, and whether the rollout succeeded or needed recovery.

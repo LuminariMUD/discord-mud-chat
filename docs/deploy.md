@@ -86,10 +86,13 @@ It does not change the operator's PM2 process list or install a startup service.
 
 The image pins Node 26.13.1 on Alpine 3.24 by digest and installs production
 dependencies from the lockfile. Its build context includes only the manifests,
-runtime source, and checked-in configuration templates. It runs as UID/GID
-1001. Config is mounted read-only. Prepare the local files and a writable logs
-directory for that container user before starting Compose. No health port is
-published.
+runtime source, and checked-in configuration templates. The image defaults to
+UID/GID 1001. Check the effective Compose `user` when a site override is present.
+Prepare the read-only config mount and writable logs directory for that user
+before starting Compose. No health port is published.
+
+Use the startup examples below for first installs. For a running bridge, follow
+[Update an existing Compose deployment](#update-an-existing-compose-deployment).
 
 ### Linux host MUD on loopback
 
@@ -139,7 +142,7 @@ docker build --secret id=proxy_ca,src=/path/to/proxy-ca.pem -t mud-discord-chat:
 The ordinary build needs no secret. Preserve your environment's configured
 proxy and registry credentials; do not print them for debugging.
 
-Before a local deployment, run `python3 scripts/test-container.py`. It builds
+For a first install, run `python3 scripts/test-container.py`. It builds
 the actual image and uses host networking to connect container Node to an
 independent loopback peer outside the container. The real app uses sample config,
 a fake Discord sink and a private ephemeral health port; it sends no Discord API
@@ -147,17 +150,71 @@ requests. It requires access to the **local** Docker Engine socket. Results and
 any environment limitations belong in the project handoff, not in a claim of
 live Discord validation.
 
-Stop before rebuilding/replacing the active process:
+### Update an existing Compose deployment
 
-```sh
-docker compose -f docker-compose.yml -f docker-compose.host.yml down
-# Check out the reviewed replacement and verify the configuration, then:
-docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
+Reuse the running container's Compose project, working directory and ordered
+configuration files, including any site override. Compose records these as
+`com.docker.compose.project`, `com.docker.compose.project.working_dir` and
+`com.docker.compose.project.config_files` labels. Record the active container ID,
+image ID, configured image name and baseline health. The checkout's Git revision
+can be newer than the running image.
+
+Build and test a separate candidate while the current container stays up. Use
+the pulled release's copies of tracked Compose files and keep local overrides
+in place. Set `--project-directory` to the live checkout so relative site paths
+and `.env` still resolve there. In this Bash example, `release` is the pulled
+worktree, `scratch` is its temporary parent, and the current directory is the
+live checkout. Adjust the project name and file list to match the installation.
+
+```bash
+live=$PWD
+service=mud-discord-chat
+revision=$(git -C "$release" rev-parse HEAD)
+candidate="mud-discord-chat:candidate-$revision-$$"
+cat > "$scratch/candidate.yml" <<'YAML'
+services:
+  mud-discord-chat:
+    image: ${BRIDGE_CANDIDATE_IMAGE:?}
+    build:
+      context: ${BRIDGE_RELEASE_DIR:?}
+      labels:
+        org.opencontainers.image.revision: ${BRIDGE_RELEASE_SHA:?}
+YAML
+
+build_compose=(docker compose -p discord --project-directory "$live"
+  -f "$release/docker-compose.yml" -f "$live/docker-compose.override.yml")
+BRIDGE_CANDIDATE_IMAGE="$candidate" BRIDGE_RELEASE_DIR="$release" BRIDGE_RELEASE_SHA="$revision" \
+  "${build_compose[@]}" -f "$scratch/candidate.yml" build "$service"
+candidate_id=$(docker image inspect --format '{{.Id}}' "$candidate")
+python3 "$release/scripts/test-container.py" --image "$candidate_id"
 ```
 
-Use the same Compose files for all operations on a given deployment. Do not
-start PM2/local Node alongside its container. Existing best-effort queued events
-may be lost on stop; there is no durable replay.
+If the builder cannot resolve the npm registry and the Linux host can, add
+`-f "$release/docker-compose.build-host.yml"` to the build command. This uses
+host networking for build steps. For a standalone smoke build, the equivalent
+is `python3 scripts/test-container.py --build-network host`. These options leave
+the running service's network and TLS verification intact. On a first install
+that needs the override, use it with `docker compose build`, then start the
+service with the runtime files and `up -d --no-build --pull never`.
+
+Keep a rollback tag for the old image ID with `docker image tag`. After the
+candidate passes, stop just `mud-discord-chat` with the live Compose files and
+wait for it to exit. Promote the reviewed checkout and validate the live
+configuration with `docker compose config --quiet`.
+Find the target image name with `docker compose config --images mud-discord-chat`,
+and tag the tested `candidate_id` with that name. Run any pending migrations
+using the reviewed release. For image-based migrations, use the tested image.
+Then start the service with
+`docker compose up -d --no-build --pull never --no-deps mud-discord-chat`.
+Use the live project and file list for each of these commands. Verify that
+exactly one bridge instance is running, its image ID matches the candidate and
+its health check passes. Existing best-effort queued events may be lost on stop.
+
+For rollback, stop the failed replacement, restore any required configuration
+and migration state, and tag the retained image with the image name resolved
+by the restored Compose configuration. Use the same `up` command and verify the
+restored image ID and health. After promotion or recovery, remove the staging
+tag with `docker image rm "$candidate"`. Keep the service and rollback tags.
 
 ## Health, logs and troubleshooting
 

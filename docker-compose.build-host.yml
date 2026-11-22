@@ -1,0 +1,5 @@
+# Optional Linux build override for hosts where Docker's build DNS fails.
+services:
+  mud-discord-chat:
+    build:
+      network: host

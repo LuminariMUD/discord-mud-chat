@@ -133,6 +133,7 @@ The container runner requires access to local Linux Docker Engine. It builds the
 actual Dockerfile and connects the image's real application to an independent
 host-loopback peer via `--network host`, using a mounted synthetic Discord driver.
 It preserves Docker registry/proxy configuration and optionally passes
-`CODEX_PROXY_CERT` as a BuildKit CA secret. It never uses production config or
-Discord credentials. Docker image/topology verification is a separate gate from
-local tests or Compose syntax checks; record unavailable daemon access explicitly.
+`CODEX_PROXY_CERT` as a BuildKit CA secret. If build steps need the host's DNS,
+pass `--build-network host`. To verify a staged local image, pass `--image IMAGE`.
+The runner resolves it to an image ID and keeps the image available for rollout.
+The fixture uses sample config and a synthetic Discord client.
