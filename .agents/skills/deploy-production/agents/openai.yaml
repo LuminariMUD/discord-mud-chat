@@ -1,0 +1,3 @@
+interface:
+  display_name: "Deploy Production"
+  short_description: "Deploy and verify the production MUD to Discord bridge"
