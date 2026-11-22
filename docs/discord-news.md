@@ -132,7 +132,8 @@ MariaDB server tools to exercise the worker and intake against an isolated
 database. The tests also use an isolated HTTP sink for Discord.
 
 To run the full handoff journey, provide a Duris checkout with its verified
-news publisher and a compatible built server. The Duris fixture uses Docker
+news publisher. Run `make -C src` and `make world` in that checkout to build
+the server and generate the combined area files. The Duris fixture uses Docker
 for its separate disposable game database. The bridge fixture starts MariaDB
 over a private Unix socket.
 
