@@ -21,14 +21,7 @@
     "type": "git",
     "url": "git+https://github.com/LuminariMUD/discord-mud-chat.git"
   },
-  "keywords": [
-    "mud",
-    "discord",
-    "bot",
-    "bridge",
-    "chat",
-    "luminarimud"
-  ],
+  "keywords": ["mud", "discord", "bot", "bridge", "chat", "luminarimud"],
   "author": "LuminariMUD",
   "license": "ISC",
   "bugs": {
