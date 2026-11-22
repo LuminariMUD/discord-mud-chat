@@ -22,10 +22,10 @@ async function makeSink(t) {
         const body = [];
         for await (const chunk of request) body.push(chunk);
         received.push({ path: request.url, token: request.headers.authorization, ...JSON.parse(Buffer.concat(body)) });
-        const { status = 200, id = firstMessage, headers = {}, disconnect } = replies.shift() || {};
+        const { status = 200, id = firstMessage, headers = {}, disconnect, retry_after } = replies.shift() || {};
         if (disconnect) return request.socket.destroy();
         response.writeHead(status, { "Content-Type": "application/json", ...headers });
-        response.end(JSON.stringify({ id }));
+        response.end(JSON.stringify({ id, retry_after }));
     });
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     t.after(() => new Promise(resolve => server.close(resolve)));
@@ -57,8 +57,8 @@ test("Discord sender checks the destination and suppresses mentions on an isolat
 
     replies.push({ status: 429, headers: { "Retry-After": "2.25" } });
     assert.equal((await postNewsPart(client, destination, parts[0])).retryAfterMs, 2250);
-    replies.push({ status: 429 }, { status: 403 }, { status: 502 }, { id: "" }, { disconnect: true });
-    assert.equal((await postNewsPart(client, destination, parts[0])).retryAfterMs, 0);
+    replies.push({ status: 429, retry_after: 3.5 }, { status: 403 }, { status: 502 }, { id: "" }, { disconnect: true });
+    assert.equal((await postNewsPart(client, destination, parts[0])).retryAfterMs, 3500);
     assert.equal((await postNewsPart(client, destination, parts[0])).state, "retryable");
     assert.equal((await postNewsPart(client, destination, parts[0])).state, "needs_review");
     assert.equal((await postNewsPart(client, destination, parts[0])).failure, "discord_success_without_message_id");

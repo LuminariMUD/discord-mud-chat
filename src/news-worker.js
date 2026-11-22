@@ -27,13 +27,15 @@ async function postNewsPart(client, destination, content) {
             return { state: "needs_review", failure: "discord_success_without_message_id" };
         }
 
-        await response.body?.cancel();
         if (response.status === 429) {
-            const seconds = Number(response.headers.get("retry-after"));
+            const header = Number(response.headers.get("retry-after"));
+            const seconds = header > 0 ? header : Number((await response.json().catch(() => null))?.retry_after);
+            if (header > 0) await response.body?.cancel();
             const retryAfterMs = seconds > 0 && Number.isSafeInteger(Math.ceil(seconds * 1000))
                 ? Math.ceil(seconds * 1000) : 0;
             return { state: "retryable", failure: "discord_http_429", retryAfterMs };
         }
+        await response.body?.cancel();
         return {
             state: definiteRejections.has(response.status) ? "retryable" : "needs_review",
             failure: "discord_http_" + response.status

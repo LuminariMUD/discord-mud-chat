@@ -11,6 +11,7 @@
 !src/news-intake.js
 !src/news-service.js
 !src/news-store.js
+!src/news-worker.js
 !config/config.js
 !config/load-config.js
 !config/news-config.js
