@@ -37,7 +37,7 @@ module.exports = {
     restart_delay: 4000,
 
     // Graceful shutdown
-    kill_timeout: 5000,
+    kill_timeout: 25000,  // Let an in-flight news send and its database writes settle.
     wait_ready: false,  // We don't send ready signal
     listen_timeout: 3000,
     // The application handles SIGINT/SIGTERM; use PM2's default signal shutdown.

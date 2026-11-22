@@ -24,9 +24,15 @@ async function makeSink(t) {
     const server = createServer(async (request, response) => {
         const body = [];
         for await (const chunk of request) body.push(chunk);
-        received.push({ path: request.url, token: request.headers.authorization, ...JSON.parse(Buffer.concat(body)) });
-        const { status = 200, id = firstMessage, headers = {}, disconnect, retry_after } = replies.shift() || {};
+        received.push({
+            path: request.url,
+            token: request.headers.authorization,
+            userAgent: request.headers["user-agent"],
+            ...JSON.parse(Buffer.concat(body))
+        });
+        const { status = 200, id = firstMessage, headers = {}, disconnect, retry_after, delayMs } = replies.shift() || {};
         if (disconnect) return request.socket.destroy();
+        if (delayMs) await delay(delayMs);
         response.writeHead(status, { "Content-Type": "application/json", ...headers });
         response.end(JSON.stringify({ id, retry_after }));
     });
@@ -51,12 +57,15 @@ test("Discord sender checks the destination and suppresses mentions on an isolat
     });
     assert.equal(received.length, 0);
     assert.deepEqual(await postNewsPart(client, destination, parts[0]), { id: firstMessage });
-    assert.deepEqual(received[0], {
+    const { userAgent, ...request } = received[0];
+    assert.deepEqual(request, {
         path: "/v10/channels/" + destination + "/messages",
         token: "Bot fixture-bot",
         content: parts[0],
         allowed_mentions: { parse: [] }
     });
+
+    assert.match(userAgent, /^DiscordBot \(https?:\/\/[^,]+, [^)]+\)$/);
 
     replies.push({ status: 429, headers: { "Retry-After": "2.25" } });
     assert.equal((await postNewsPart(client, destination, parts[0])).retryAfterMs, 2250);
@@ -126,6 +135,16 @@ test("MariaDB serializes workers and resumes at the first unsent part after a de
     assert.deepEqual(received.map(message => message.content), [parts[0], parts[1], parts[1]]);
     await deliverNextNews(worker);
     assert.equal(received.length, 3);
+});
+
+test("MariaDB records a slow successful POST once", { ...fixtureOnly, timeout: 10000 }, async t => {
+    const { pool, row } = await fixture(t, "6");
+    const { client, replies, received } = await makeSink(t);
+    replies.push({ id: firstMessage, delayMs: 3500 });
+    await deliverNextNews({ pool, destination, logger: silent, send: (channel, content) => postNewsPart(client, channel, content) });
+    assert.equal((await row()).state, "queued");
+    assert.deepEqual(JSON.parse((await row()).message_ids), [firstMessage]);
+    assert.equal(received.length, 1);
 });
 
 test("MariaDB persists backoff, honors Retry-After, and stops after five 429 responses", fixtureOnly, async t => {

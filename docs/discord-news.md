@@ -113,6 +113,9 @@ uncertain. Resume the senders after reconciliation.
 ## Pause or roll back
 
 Set `news.send` to `false` and restart each bridge worker to pause delivery.
+The worker finishes its current part and records the outcome during graceful
+shutdown. Allow at least 25 seconds before force-stopping a worker, as in the
+included Compose and PM2 configurations.
 Set `news.enabled` to `false` to close intake. If you omit `news.send`, it
 follows `news.enabled`. Set `news.send` explicitly to `true` to drain existing
 records with intake disabled. For rollback, disable both settings and retain

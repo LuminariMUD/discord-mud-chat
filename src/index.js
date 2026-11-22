@@ -46,7 +46,7 @@ function createApplication(options = {}) {
         logger: console
     });
 
-    const news = config.news && createNewsService(config.news, discordClient);
+    const news = options.news || (config.news && createNewsService(config.news, discordClient));
 
     let started = false;
     let closed = false;
@@ -102,15 +102,16 @@ function createApplication(options = {}) {
 
             closed = true;
             stopping = (async () => {
+                const stopNews = newsStopped ? undefined : Promise.resolve().then(() => news.stop()).then(() => {
+                    newsStopped = true;
+                });
+                // The worker needs the bridge's Discord client until its current send settles.
+                const afterNews = stopNews?.catch(() => {}) || Promise.resolve();
                 const results = await Promise.allSettled([
-                    newsStopped
-                        ? Promise.resolve()
-                        : Promise.resolve().then(() => news.stop()).then(() => {
-                            newsStopped = true;
-                        }),
+                    stopNews,
                     bridgeStopped
                         ? Promise.resolve()
-                        : Promise.resolve().then(() => bridge.stop()).then(() => {
+                        : afterNews.then(() => bridge.stop()).then(() => {
                             bridgeStopped = true;
                         }),
                     healthServerStopped

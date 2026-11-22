@@ -1,4 +1,4 @@
-const { ChannelType, PermissionFlagsBits } = require("discord.js");
+const { ChannelType, DefaultUserAgent, PermissionFlagsBits } = require("discord.js");
 
 const MAX_RATE_LIMIT_ATTEMPTS = 5;
 const definiteRejections = new Set([400, 401, 403, 404, 405, 413, 415, 422]);
@@ -18,7 +18,11 @@ async function postNewsPart(client, destination, content) {
             method: "POST",
             redirect: "error",
             signal: AbortSignal.timeout(8000),
-            headers: { Authorization: "Bot " + client.token, "Content-Type": "application/json" },
+            headers: {
+                Authorization: "Bot " + client.token,
+                "Content-Type": "application/json",
+                "User-Agent": DefaultUserAgent
+            },
             body: JSON.stringify({ content, allowed_mentions: { parse: [] } })
         });
         if (response.ok) {
