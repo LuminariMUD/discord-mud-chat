@@ -25,6 +25,8 @@ directions - or publish an outbound-only feed.
 [Configuration](#configuration) | [Deployment](docs/deploy.md) |
 [Testing](docs/testing.md)
 
+See [Duris Discord news](docs/discord-news.md) for the optional verified news intake.
+
 ## Built for your world's conversations
 
 - **Flexible channel routing.** Map case-sensitive MUD channel names to Discord

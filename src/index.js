@@ -4,6 +4,7 @@ const Logger = require("./logger");
 const HealthServer = require("./health");
 const { ChatBridge } = require("./bridge");
 const MudClient = require("./mud-client");
+const { createNewsService } = require("./news-service");
 
 /** Composes the bridge runtime and provides idempotent lifecycle controls. */
 function createApplication(options = {}) {
@@ -45,12 +46,15 @@ function createApplication(options = {}) {
         logger: console
     });
 
+    const news = options.news || (config.news && createNewsService(config.news));
+
     let started = false;
     let closed = false;
     let starting;
     let stopping;
     let bridgeStopped = false;
     let healthServerStopped = false;
+    let newsStopped = !news;
     let loggerClosed = typeof logger.close !== "function";
     const application = {
         logger,
@@ -66,6 +70,8 @@ function createApplication(options = {}) {
             starting = (async () => {
                 try {
                     await healthServer.start();
+                    if (closed) return;
+                    await news?.start();
                     if (closed) return;
                     bridge.start();
                     started = true;
@@ -92,11 +98,16 @@ function createApplication(options = {}) {
         /** Drains both runtime services and permanently closes the application. */
         async stop() {
             if (stopping) return stopping;
-            if (closed && bridgeStopped && healthServerStopped && loggerClosed) return;
+            if (closed && bridgeStopped && healthServerStopped && newsStopped && loggerClosed) return;
 
             closed = true;
             stopping = (async () => {
                 const results = await Promise.allSettled([
+                    newsStopped
+                        ? Promise.resolve()
+                        : Promise.resolve().then(() => news.stop()).then(() => {
+                            newsStopped = true;
+                        }),
                     bridgeStopped
                         ? Promise.resolve()
                         : Promise.resolve().then(() => bridge.stop()).then(() => {

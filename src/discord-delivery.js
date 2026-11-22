@@ -100,4 +100,4 @@ class DiscordDelivery {
     }
 }
 
-module.exports = { DiscordDelivery, DISCORD_CONTENT_LIMIT, MAX_PENDING_DISCORD_EVENTS, MAX_PENDING_DISCORD_BYTES };
+module.exports = { discordChunks, DiscordDelivery, DISCORD_CONTENT_LIMIT, MAX_PENDING_DISCORD_EVENTS, MAX_PENDING_DISCORD_BYTES };
