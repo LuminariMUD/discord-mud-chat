@@ -8,7 +8,11 @@
 !src/index.js
 !src/logger.js
 !src/mud-client.js
+!src/news-intake.js
+!src/news-service.js
+!src/news-store.js
 !config/config.js
 !config/load-config.js
+!config/news-config.js
 !config/config.example.json
 !config/config.duris.example.json
