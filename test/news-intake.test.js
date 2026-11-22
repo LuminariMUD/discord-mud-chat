@@ -62,6 +62,11 @@ test("news renders paragraphs, escaped Discord syntax, usable links and UTF-16 c
     assert.match(message, /^\*\*Patch \\\*notes\\\*\*\*\n\nHighlights\n\n/);
     assert.ok(message.includes("\\- More at <https://example.com/a>\\."));
     assert.ok(message.includes("<https://example.com/wiki/A_(B)>\\)"));
+    const [parenthesized] = renderNews({
+        title: "Update",
+        body: "See (https://example.com/a(b)/c)."
+    });
+    assert.equal(parenthesized, "**Update**\n\nSee \\(<https://example.com/a(b)/c>\\)\\.");
     assert.ok(message.includes("\\\x60code\\\x60 \\<@123\\>"));
     const emoji = String.fromCodePoint(0x1f680);
     const parts = renderNews({ title: "Update", body: "x" + emoji.repeat(2001) + " done" });
